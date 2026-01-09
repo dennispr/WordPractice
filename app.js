@@ -70,6 +70,15 @@ async function loadWords() {
     }
 }
 
+// Shuffle words using Fisher-Yates algorithm
+function shuffleWords() {
+    for (let i = words.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [words[i], words[j]] = [words[j], words[i]];
+    }
+    console.log('Words shuffled');
+}
+
 // Create Title Screen
 function createTitleScreen() {
     titleScreen = new PIXI.Container();
@@ -88,13 +97,21 @@ function createTitleScreen() {
     titleScreen.addChild(title);
     
     // Start button
-    const startButton = createButton('Start', app.screen.width / 2, app.screen.height / 2 + 50);
+    const startButton = createButton('Start', app.screen.width / 2, app.screen.height / 2 + 20);
     startButton.on('pointerdown', () => {
         currentWordIndex = 0;
         showScreen('practice');
         updateWord();
     });
     titleScreen.addChild(startButton);
+    
+    // Shuffle button
+    const shuffleButton = createButton('Shuffle Words', app.screen.width / 2, app.screen.height / 2 + 100);
+    shuffleButton.on('pointerdown', () => {
+        shuffleWords();
+        currentWordIndex = 0;
+    });
+    titleScreen.addChild(shuffleButton);
     
     app.stage.addChild(titleScreen);
 }
@@ -152,7 +169,17 @@ function createEndScreen() {
         currentWordIndex = 0;
         showScreen('title');
     });
+    
+    // Shuffle again button
+    const shuffleAgainButton = createButton('Shuffle & Restart', app.screen.width / 2, app.screen.height / 2 + 120);
+    shuffleAgainButton.on('pointerdown', () => {
+        shuffleWords();
+        currentWordIndex = 0;
+        showScreen('practice');
+        updateWord();
+    });
     endScreen.addChild(returnButton);
+    endScreen.addChild(shuffleAgainButton);
     
     app.stage.addChild(endScreen);
 }
@@ -260,10 +287,14 @@ function handleResize() {
     
     // Update title screen positions
     if (titleScreen && titleScreen.children.length > 0) {
-        titleScreen.children[0].x = app.screen.width / 2;
+        titleScreen.children[0].x = app.screen.width / 2; // title
         titleScreen.children[0].y = app.screen.height / 3;
-        titleScreen.children[1].x = app.screen.width / 2;
-        titleScreen.children[1].y = app.screen.height / 2 + 50;
+        titleScreen.children[1].x = app.screen.width / 2; // start button
+        titleScreen.children[1].y = app.screen.height / 2 + 20;
+        if (titleScreen.children.length > 2) {
+            titleScreen.children[2].x = app.screen.width / 2; // shuffle button
+            titleScreen.children[2].y = app.screen.height / 2 + 100;
+        }
     }
     
     // Update practice screen positions
@@ -278,10 +309,14 @@ function handleResize() {
     
     // Update end screen positions
     if (endScreen && endScreen.children.length > 0) {
-        endScreen.children[0].x = app.screen.width / 2;
+        endScreen.children[0].x = app.screen.width / 2; // congratulations text
         endScreen.children[0].y = app.screen.height / 3;
-        endScreen.children[1].x = app.screen.width / 2;
+        endScreen.children[1].x = app.screen.width / 2; // return button
         endScreen.children[1].y = app.screen.height / 2 + 50;
+        if (endScreen.children.length > 2) {
+            endScreen.children[2].x = app.screen.width / 2; // shuffle again button
+            endScreen.children[2].y = app.screen.height / 2 + 120;
+        }
     }
 }
 
