@@ -1,0 +1,22 @@
+{
+  "name": "word-practice",
+  "version": "1.0.0",
+  "description": "A Pixi.js web app for practicing with words",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx http-server -p 8080 -o"
+  },
+  "keywords": [
+    "pixi.js",
+    "word-practice",
+    "education"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "pixi.js": "^7.3.0"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
