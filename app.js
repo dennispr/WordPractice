@@ -31,10 +31,8 @@ let currentFont;
 async function init() {
     // Create the application with v7 API
     app = new PIXI.Application({
-        width: window.innerWidth,
-        height: window.innerHeight,
-        backgroundColor: 0xffffff,
-        resizeTo: window
+        resizeTo: window,
+        backgroundColor: 0xffffff
     });
     
     document.body.appendChild(app.view);

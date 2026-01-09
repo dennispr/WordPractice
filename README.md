@@ -8,7 +8,7 @@ A Pixi.js web application for practicing with words. Words are displayed one at 
 - **Word Practice**: 
   - Display words one at a time, centered on screen
   - Navigate with Next/Back buttons or arrow keys (←/→)
-  - Random Google Fonts applied to each word (6 fonts available)
+  - Random fonts applied to each word (6 fonts available)
 - **End Screen**: Completion message with option to return to title
 
 ## How to Run
@@ -54,7 +54,7 @@ Simply add or remove lines to customize your word list. The app will automatical
 ## Technology Stack
 
 - **Pixi.js v7**: High-performance 2D rendering engine
-- **Google Fonts**: 6 different fonts (Roboto, Open Sans, Lato, Oswald, Montserrat, Playfair Display)
+- **System Fonts**: 6 different fonts (Arial, Georgia, Times New Roman, Courier New, Verdana, Comic Sans MS)
 - **Vanilla JavaScript**: No additional frameworks required
 
 ## Browser Compatibility
