@@ -1,4 +1,5 @@
 // Word Practice App using Pixi.js
+import * as PIXI from 'pixi.js';
 
 // System fonts array - at least 5 different fonts
 const GOOGLE_FONTS = [
