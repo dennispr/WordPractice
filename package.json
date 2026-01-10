@@ -4,7 +4,10 @@
   "description": "A Pixi.js web app for practicing with words",
   "main": "index.html",
   "scripts": {
-    "start": "npx http-server -p 8080 -o"
+    "start": "npx http-server -p 8080 -o",
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development",
+    "serve:build": "npx http-server dist -p 8080 -o"
   },
   "keywords": [
     "pixi.js",
@@ -17,6 +20,10 @@
     "pixi.js": "^7.3.0"
   },
   "devDependencies": {
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
+    "html-webpack-plugin": "^5.5.3",
+    "copy-webpack-plugin": "^11.0.0"
   }
 }
