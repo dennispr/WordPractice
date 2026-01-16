@@ -298,7 +298,7 @@ function updateProgressBar() {
     progressBarFill.endFill();
     
     // Update text with percentage
-    progressText.text = `${percentage}% Complete (${currentWordIndex + 1}/${words.length})`;
+    progressText.text = `${percentage}% Complete!`;
 }
 
 // Handle next button/arrow key
