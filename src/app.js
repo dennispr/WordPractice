@@ -143,13 +143,13 @@ function createPracticeScreen() {
     progressBarBg.drawRoundedRect(0, 0, 400, 20, 10);
     progressBarBg.endFill();
     progressBarBg.x = app.screen.width / 2 - 200;
-    progressBarBg.y = app.screen.height / 2 - 80;
+    progressBarBg.y = app.screen.height - 50;
     practiceScreen.addChild(progressBarBg);
     
     // Progress bar fill
     progressBarFill = new PIXI.Graphics();
     progressBarFill.x = app.screen.width / 2 - 200;
-    progressBarFill.y = app.screen.height / 2 - 80;
+    progressBarFill.y = app.screen.height - 50;
     practiceScreen.addChild(progressBarFill);
     
     // Progress text
@@ -162,7 +162,7 @@ function createPracticeScreen() {
     });
     progressText.anchor.set(0.5);
     progressText.x = app.screen.width / 2;
-    progressText.y = app.screen.height / 2 - 110;
+    progressText.y = app.screen.height - 20;
     practiceScreen.addChild(progressText);
     
     // Back button
@@ -290,6 +290,7 @@ function updateWord() {
 function updateProgressBar() {
     const progress = (currentWordIndex + 1) / words.length;
     const fillWidth = 400 * progress;
+    const percentage = Math.round(progress * 100);
     
     // Update fill bar
     progressBarFill.clear();
@@ -297,9 +298,8 @@ function updateProgressBar() {
     progressBarFill.drawRoundedRect(0, 0, fillWidth, 20, 10);
     progressBarFill.endFill();
     
-    // Update text
-    const wordsLeft = words.length - (currentWordIndex + 1);
-    progressText.text = `Word ${currentWordIndex + 1} of ${words.length} (${wordsLeft} remaining)`;
+    // Update text with percentage
+    progressText.text = `${percentage}% Complete (${currentWordIndex + 1}/${words.length})`;
 }
 
 // Handle next button/arrow key
@@ -356,15 +356,15 @@ function handleResize() {
         // Update progress bar positions
         if (progressBarBg) {
             progressBarBg.x = app.screen.width / 2 - 200;
-            progressBarBg.y = app.screen.height / 2 - 80;
+            progressBarBg.y = app.screen.height - 50;
         }
         if (progressBarFill) {
             progressBarFill.x = app.screen.width / 2 - 200;
-            progressBarFill.y = app.screen.height / 2 - 80;
+            progressBarFill.y = app.screen.height - 50;
         }
         if (progressText) {
             progressText.x = app.screen.width / 2;
-            progressText.y = app.screen.height / 2 - 110;
+            progressText.y = app.screen.height - 20;
         }
         
         backButton.x = app.screen.width / 2 - 120;
