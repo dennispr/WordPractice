@@ -27,6 +27,9 @@ let wordText;
 let nextButton;
 let backButton;
 let currentFont;
+let progressBarBg;
+let progressBarFill;
+let progressText;
 
 // Initialize the Pixi Application
 async function init() {
@@ -133,6 +136,34 @@ function createPracticeScreen() {
     wordText.x = app.screen.width / 2;
     wordText.y = app.screen.height / 2;
     practiceScreen.addChild(wordText);
+    
+    // Progress bar background
+    progressBarBg = new PIXI.Graphics();
+    progressBarBg.beginFill(0xcccccc);
+    progressBarBg.drawRoundedRect(0, 0, 400, 20, 10);
+    progressBarBg.endFill();
+    progressBarBg.x = app.screen.width / 2 - 200;
+    progressBarBg.y = app.screen.height / 2 - 80;
+    practiceScreen.addChild(progressBarBg);
+    
+    // Progress bar fill
+    progressBarFill = new PIXI.Graphics();
+    progressBarFill.x = app.screen.width / 2 - 200;
+    progressBarFill.y = app.screen.height / 2 - 80;
+    practiceScreen.addChild(progressBarFill);
+    
+    // Progress text
+    progressText = new PIXI.Text('', {
+        fontFamily: 'Arial',
+        fontSize: 18,
+        fontWeight: 'bold',
+        fill: 0x666666,
+        align: 'center'
+    });
+    progressText.anchor.set(0.5);
+    progressText.x = app.screen.width / 2;
+    progressText.y = app.screen.height / 2 - 110;
+    practiceScreen.addChild(progressText);
     
     // Back button
     backButton = createButton('Back', app.screen.width / 2 - 120, app.screen.height - 100);
@@ -248,8 +279,27 @@ function updateWord() {
         wordText.style.fontFamily = randomFont;
         currentFont = randomFont;
         
+        // Update progress bar
+        updateProgressBar();
+        
         console.log(`Word ${currentWordIndex + 1}/${words.length}: "${word}" in ${randomFont}`);
     }
+}
+
+// Update progress bar display
+function updateProgressBar() {
+    const progress = (currentWordIndex + 1) / words.length;
+    const fillWidth = 400 * progress;
+    
+    // Update fill bar
+    progressBarFill.clear();
+    progressBarFill.beginFill(0x4CAF50);
+    progressBarFill.drawRoundedRect(0, 0, fillWidth, 20, 10);
+    progressBarFill.endFill();
+    
+    // Update text
+    const wordsLeft = words.length - (currentWordIndex + 1);
+    progressText.text = `Word ${currentWordIndex + 1} of ${words.length} (${wordsLeft} remaining)`;
 }
 
 // Handle next button/arrow key
@@ -302,6 +352,21 @@ function handleResize() {
     if (practiceScreen && practiceScreen.children.length > 0) {
         wordText.x = app.screen.width / 2;
         wordText.y = app.screen.height / 2;
+        
+        // Update progress bar positions
+        if (progressBarBg) {
+            progressBarBg.x = app.screen.width / 2 - 200;
+            progressBarBg.y = app.screen.height / 2 - 80;
+        }
+        if (progressBarFill) {
+            progressBarFill.x = app.screen.width / 2 - 200;
+            progressBarFill.y = app.screen.height / 2 - 80;
+        }
+        if (progressText) {
+            progressText.x = app.screen.width / 2;
+            progressText.y = app.screen.height / 2 - 110;
+        }
+        
         backButton.x = app.screen.width / 2 - 120;
         backButton.y = app.screen.height - 100;
         nextButton.x = app.screen.width / 2 + 120;
