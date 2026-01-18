@@ -20,8 +20,24 @@ let currentScreen = 'title'; // 'title', 'practice', 'end'
 // UI containers
 let titleScreen;
 let practiceScreen;
+let raceScreen;
 let endScreen;
 let optionsScreen;
+let highScoreInputScreen;
+let highScoreViewScreen;
+
+// Race mode elements
+let raceTrack;
+let racers = {}; // Will hold cat, dog, bird racers
+let raceData = {
+    bestTime: 300, // Default 5 minutes in seconds
+    recentTime: 600, // Default 10 minutes in seconds
+    currentStartTime: null,
+    totalWords: 0
+};
+
+// High score system
+let pendingScore = null; // Store score waiting for initials input
 
 // Practice screen elements
 let wordText;
@@ -183,8 +199,21 @@ class GameDataManager {
                     totalCompletions: 0,
                     totalWordsCompleted: 0
                 },
+                highScores: {
+                    topTen: [], // Array of {initials, time, date, wordsCount}
+                    historical: [] // All scores that were once in top 10
+                },
                 sessions: [],
                 settings: {}
+            };
+        }
+        
+        // Ensure highScores structure exists (for existing saves)
+        if (!data.games[this.gameId].highScores) {
+            console.log('High score data: Adding high scores structure to existing save');
+            data.games[this.gameId].highScores = {
+                topTen: [],
+                historical: []
             };
         }
 
@@ -234,10 +263,167 @@ class GameDataManager {
             totalWordsCompleted: gameStats.totalWordsCompleted || 0
         };
     }
+    
+    // Check if time qualifies for top 10
+    isTopTenScore(time) {
+        const data = this.initData();
+        const topTen = data.games[this.gameId]?.highScores?.topTen || [];
+        
+        // Always qualifies if less than 10 scores
+        if (topTen.length < 10) return true;
+        
+        // Check if better than worst score
+        const worstScore = topTen[topTen.length - 1];
+        return time < worstScore.time;
+    }
+    
+    // Add high score with initials
+    addHighScore(initials, time, wordsCount) {
+        const data = this.initData();
+        const scoreEntry = {
+            initials: initials.toUpperCase().substring(0, 3), // Max 3 characters
+            time: time,
+            date: new Date().toISOString(),
+            wordsCount: wordsCount,
+            timestamp: Date.now()
+        };
+        
+        const highScores = data.games[this.gameId].highScores;
+        
+        // Add to topTen
+        highScores.topTen.push(scoreEntry);
+        
+        // Sort by time (fastest first)
+        highScores.topTen.sort((a, b) => a.time - b.time);
+        
+        // If more than 10, move extras to historical
+        while (highScores.topTen.length > 10) {
+            const removedScore = highScores.topTen.pop();
+            // Only add to historical if not already there
+            const alreadyHistorical = highScores.historical.find(h => 
+                h.timestamp === removedScore.timestamp
+            );
+            if (!removedScore.wasInTopTen && !alreadyHistorical) {
+                removedScore.wasInTopTen = true;
+                removedScore.removedFromTopTen = new Date().toISOString();
+                highScores.historical.push(removedScore);
+            }
+        }
+        
+        localStorage.setItem(this.storageKey, JSON.stringify(data));
+        console.log('High score added:', scoreEntry);
+        
+        return highScores.topTen.findIndex(score => score.timestamp === scoreEntry.timestamp) + 1; // Return rank
+    }
+    
+    // Get high scores
+    getHighScores() {
+        const data = this.initData();
+        return {
+            topTen: data.games[this.gameId]?.highScores?.topTen || [],
+            historical: data.games[this.gameId]?.highScores?.historical || []
+        };
+    }
 }
 
 // Initialize game data manager
 const gameData = new GameDataManager('word-practice', 'Word Practice', 'Videogame Workshop LLC');
+
+// High score input handling
+let currentInitials = '';
+
+// Submit high score with current initials
+function submitHighScore() {
+    if (!pendingScore) return;
+    
+    const initials = currentInitials || 'AAA'; // Default if empty
+    const rank = gameData.addHighScore(initials, pendingScore.time, pendingScore.wordsCount);
+    
+    console.log(`High score submitted: ${initials} - ${pendingScore.time}s (Rank #${rank})`);
+    
+    // Show celebration if it was also a best time
+    if (pendingScore.isNewBest) {
+        // Switch to practice screen for celebration
+        showScreen('practice');
+        setTimeout(() => {
+            const celebrationMessage = pendingScore.wordsCount === 1 ? 'FIRST COMPLETION!' : 'NEW BEST TIME!';
+            createCelebration(pendingScore.time, celebrationMessage);
+            
+            // Go to end screen after celebration
+            setTimeout(() => {
+                showScreen('end');
+            }, 4500);
+        }, 100);
+    } else {
+        // Go directly to end screen
+        showScreen('end');
+    }
+    
+    pendingScore = null;
+    currentInitials = '';
+}
+
+// Update high score input display
+function updateHighScoreInput() {
+    if (!highScoreInputScreen || !highScoreInputScreen.visible) return;
+    
+    const inputDisplay = highScoreInputScreen.children[2]; // Third child is input display
+    const displayText = currentInitials.padEnd(3, '_');
+    inputDisplay.text = displayText;
+}
+
+// Update high score view with current scores
+function updateHighScoreView() {
+    if (!highScoreViewScreen) return;
+    
+    const scoresContainer = highScoreViewScreen.children[1]; // Second child is scores container
+    scoresContainer.removeChildren();
+    
+    const scores = gameData.getHighScores();
+    
+    if (scores.topTen.length === 0) {
+        const noScoresText = new PIXI.Text('No high scores yet!\n\nComplete the word practice to set your first score.', {
+            fontFamily: 'Arial',
+            fontSize: 24,
+            fill: 0x666666,
+            align: 'center'
+        });
+        noScoresText.anchor.set(0.5);
+        scoresContainer.addChild(noScoresText);
+        return;
+    }
+    
+    scores.topTen.forEach((score, index) => {
+        const rankText = `${index + 1}.`;
+        const timeText = `${score.time}s`;
+        const initialsText = score.initials;
+        const wordsText = `${score.wordsCount} words`;
+        
+        const scoreText = new PIXI.Text(`${rankText.padEnd(4)} ${initialsText.padEnd(4)} ${timeText.padEnd(8)} ${wordsText}`, {
+            fontFamily: 'Courier New',
+            fontSize: index === 0 ? 20 : 18,
+            fontWeight: index === 0 ? 'bold' : 'normal',
+            fill: index === 0 ? 0xFFD700 : 0x333333,
+            align: 'left'
+        });
+        scoreText.anchor.set(0.5, 0);
+        scoreText.y = index * 30;
+        scoresContainer.addChild(scoreText);
+    });
+    
+    // Show total historical scores if any
+    if (scores.historical.length > 0) {
+        const historicalText = new PIXI.Text(`\n${scores.historical.length} historical scores tracked`, {
+            fontFamily: 'Arial',
+            fontSize: 14,
+            fill: 0x888888,
+            align: 'center'
+        });
+        historicalText.anchor.set(0.5, 0);
+        historicalText.y = scores.topTen.length * 30 + 20;
+        scoresContainer.addChild(historicalText);
+    }
+}
 
 // Reset all save data to defaults
 function resetSaveData() {
@@ -270,8 +456,11 @@ async function init() {
     // Create all screens
     createTitleScreen();
     createPracticeScreen();
+    createRaceScreen();
     createEndScreen();
     createOptionsScreen();
+    createHighScoreInputScreen();
+    createHighScoreViewScreen();
     
     // Show title screen
     showScreen('title');
@@ -327,6 +516,7 @@ function createTitleScreen() {
     // Start button
     const startButton = createButton('Start', app.screen.width / 2, app.screen.height / 2 + 20);
     startButton.on('pointerdown', () => {
+        shuffleWords();
         currentWordIndex = 0;
         sessionStartTime = new Date().toISOString();
         backButtonUses = 0;
@@ -335,13 +525,18 @@ function createTitleScreen() {
     });
     titleScreen.addChild(startButton);
     
-    // Shuffle button
-    const shuffleButton = createButton('Shuffle Words', app.screen.width / 2, app.screen.height / 2 + 100);
-    shuffleButton.on('pointerdown', () => {
+    // Race button (race mode)
+    const raceButton = createButton('Race', app.screen.width / 2, app.screen.height / 2 + 100);
+    raceButton.on('pointerdown', () => {
         shuffleWords();
         currentWordIndex = 0;
+        sessionStartTime = new Date().toISOString();
+        backButtonUses = 0;
+        initRaceMode();
+        showScreen('race');
+        updateWord();
     });
-    titleScreen.addChild(shuffleButton);
+    titleScreen.addChild(raceButton);
     
     // Options button
     const optionsButton = createButton('Options', app.screen.width / 2, app.screen.height / 2 + 180);
@@ -349,6 +544,13 @@ function createTitleScreen() {
         showScreen('options');
     });
     titleScreen.addChild(optionsButton);
+    
+    // High Scores button
+    const highScoresButton = createButton('High Scores', app.screen.width / 2, app.screen.height / 2 + 260);
+    highScoresButton.on('pointerdown', () => {
+        showScreen('highScoreView');
+    });
+    titleScreen.addChild(highScoresButton);
     
     app.stage.addChild(titleScreen);
 }
@@ -416,6 +618,187 @@ function createPracticeScreen() {
     app.stage.addChild(practiceScreen);
 }
 
+// Create race screen
+function createRaceScreen() {
+    raceScreen = new PIXI.Container();
+    
+    // Race track container
+    const raceTrackContainer = new PIXI.Container();
+    raceTrackContainer.y = 20;
+    raceScreen.addChild(raceTrackContainer);
+    
+    // Race track background
+    const trackBg = new PIXI.Graphics();
+    trackBg.beginFill(0xf0f0f0);
+    trackBg.drawRoundedRect(50, 0, app.screen.width - 100, 80, 10);
+    trackBg.endFill();
+    trackBg.beginFill(0xcccccc);
+    trackBg.drawRoundedRect(55, 5, app.screen.width - 110, 70, 8);
+    trackBg.endFill();
+    raceTrackContainer.addChild(trackBg);
+    
+    // Finish line
+    const finishLine = new PIXI.Graphics();
+    finishLine.lineStyle(3, 0x000000);
+    for (let i = 0; i < 8; i++) {
+        finishLine.moveTo(app.screen.width - 60, 10 + i * 10);
+        finishLine.lineTo(app.screen.width - 50, 10 + i * 10);
+    }
+    raceTrackContainer.addChild(finishLine);
+    
+    // Create racers
+    const raceTrackWidth = app.screen.width - 110;
+    
+    // Best time racer (cat) - top lane
+    racers.best = new PIXI.Text('🐱', { fontSize: 24 });
+    racers.best.anchor.set(0.5);
+    racers.best.x = 70;
+    racers.best.y = 25;
+    raceTrackContainer.addChild(racers.best);
+    
+    // Current player racer (dog) - middle lane
+    racers.current = new PIXI.Text('🐶', { fontSize: 24 });
+    racers.current.anchor.set(0.5);
+    racers.current.x = 70;
+    racers.current.y = 45;
+    raceTrackContainer.addChild(racers.current);
+    
+    // Recent score racer (bird) - bottom lane
+    racers.recent = new PIXI.Text('🐦', { fontSize: 24 });
+    racers.recent.anchor.set(0.5);
+    racers.recent.x = 70;
+    racers.recent.y = 65;
+    raceTrackContainer.addChild(racers.recent);
+    
+    // Racer labels
+    const bestLabel = new PIXI.Text('Best Time', { fontSize: 12, fill: 0x666666 });
+    bestLabel.x = 10;
+    bestLabel.y = 15;
+    raceTrackContainer.addChild(bestLabel);
+    
+    const currentLabel = new PIXI.Text('You', { fontSize: 12, fill: 0x0066CC, fontWeight: 'bold' });
+    currentLabel.x = 10;
+    currentLabel.y = 35;
+    raceTrackContainer.addChild(currentLabel);
+    
+    const recentLabel = new PIXI.Text('Last Score', { fontSize: 12, fill: 0x666666 });
+    recentLabel.x = 10;
+    recentLabel.y = 55;
+    raceTrackContainer.addChild(recentLabel);
+    
+    // Word text (same as practice mode)
+    const raceWordText = new PIXI.Text('', {
+        fontFamily: 'Arial',
+        fontSize: 64,
+        fontWeight: 'bold',
+        fill: 0x000000,
+        align: 'center'
+    });
+    raceWordText.anchor.set(0.5);
+    raceWordText.x = app.screen.width / 2;
+    raceWordText.y = app.screen.height / 2;
+    raceScreen.addChild(raceWordText);
+    
+    // Progress bar (bottom of screen, same as practice)
+    const raceProgressBarBg = new PIXI.Graphics();
+    raceProgressBarBg.beginFill(0xcccccc);
+    raceProgressBarBg.drawRoundedRect(0, 0, 400, 20, 10);
+    raceProgressBarBg.endFill();
+    raceProgressBarBg.x = app.screen.width / 2 - 200;
+    raceProgressBarBg.y = app.screen.height - 50;
+    raceScreen.addChild(raceProgressBarBg);
+    
+    const raceProgressBarFill = new PIXI.Graphics();
+    raceProgressBarFill.x = app.screen.width / 2 - 200;
+    raceProgressBarFill.y = app.screen.height - 50;
+    raceScreen.addChild(raceProgressBarFill);
+    
+    // Progress text
+    const raceProgressText = new PIXI.Text('', {
+        fontFamily: 'Arial',
+        fontSize: 18,
+        fontWeight: 'bold',
+        fill: 0x666666,
+        align: 'center'
+    });
+    raceProgressText.anchor.set(0.5);
+    raceProgressText.x = app.screen.width / 2;
+    raceProgressText.y = app.screen.height - 20;
+    raceScreen.addChild(raceProgressText);
+    
+    // Navigation buttons (same as practice mode)
+    const raceBackButton = createButton('◀ Back', 150, app.screen.height - 120);
+    raceBackButton.on('pointerdown', () => {
+        if (canNavigate) {
+            handleBack();
+        }
+    });
+    raceScreen.addChild(raceBackButton);
+    
+    const raceNextButton = createButton('Next ▶', app.screen.width - 150, app.screen.height - 120);
+    raceNextButton.on('pointerdown', () => {
+        if (canNavigate) {
+            handleNext();
+        }
+    });
+    raceScreen.addChild(raceNextButton);
+    
+    app.stage.addChild(raceScreen);
+    
+    // Store race track reference for updates
+    raceTrack = {
+        width: raceTrackWidth,
+        startX: 70,
+        endX: app.screen.width - 70
+    };
+}
+
+// Initialize race mode
+function initRaceMode() {
+    // Get high scores for race opponents
+    const scores = gameData.getHighScores();
+    
+    // Set race data
+    raceData.totalWords = words.length;
+    raceData.currentStartTime = new Date();
+    
+    if (scores.topTen.length > 0) {
+        raceData.bestTime = scores.topTen[0].time;
+        raceData.recentTime = scores.topTen[scores.topTen.length - 1].time;
+    } else {
+        // Defaults: 5 min best, 10 min recent
+        raceData.bestTime = 300;
+        raceData.recentTime = 600;
+    }
+    
+    // Reset racer positions
+    racers.best.x = raceTrack.startX;
+    racers.current.x = raceTrack.startX;
+    racers.recent.x = raceTrack.startX;
+    
+    console.log(`Race initialized: Best ${raceData.bestTime}s, Recent ${raceData.recentTime}s, Words ${raceData.totalWords}`);
+}
+
+// Update race positions
+function updateRacePositions() {
+    if (currentScreen !== 'race' || !raceData.currentStartTime) return;
+    
+    const currentTime = (new Date() - raceData.currentStartTime) / 1000; // seconds elapsed
+    const currentProgress = currentWordIndex / raceData.totalWords; // 0 to 1
+    const trackDistance = raceTrack.endX - raceTrack.startX;
+    
+    // Update current player position (based on word progress)
+    racers.current.x = raceTrack.startX + (currentProgress * trackDistance);
+    
+    // Update best time racer (steady pace to finish at best time)
+    const bestProgress = Math.min(currentTime / raceData.bestTime, 1);
+    racers.best.x = raceTrack.startX + (bestProgress * trackDistance);
+    
+    // Update recent score racer (steady pace to finish at recent time)
+    const recentProgress = Math.min(currentTime / raceData.recentTime, 1);
+    racers.recent.x = raceTrack.startX + (recentProgress * trackDistance);
+}
+
 // Create End Screen
 function createEndScreen() {
     endScreen = new PIXI.Container();
@@ -474,7 +857,7 @@ function createOptionsScreen() {
     optionsScreen.addChild(optionsTitle);
     
     // Reset Progress button
-    const resetButton = createButton('Reset Progress', app.screen.width / 2, app.screen.height / 2);
+    const resetButton = createButton('Reset Progress', app.screen.width / 2, app.screen.height / 2 - 50);
     resetButton.on('pointerdown', () => {
         if (confirm('Are you sure you want to reset all progress? This cannot be undone.')) {
             resetSaveData();
@@ -482,6 +865,39 @@ function createOptionsScreen() {
         }
     });
     optionsScreen.addChild(resetButton);
+    
+    // Test Celebration button (for debugging)
+    const testCelebrationButton = createButton('Test Celebration', app.screen.width / 2, app.screen.height / 2 + 20);
+    testCelebrationButton.on('pointerdown', () => {
+        // Set up minimal test data
+        const originalWords = words.slice(); // Save original words
+        const originalIndex = currentWordIndex;
+        
+        // Set test word and index
+        words = ['TEST']; // Single word for testing
+        currentWordIndex = 0;
+        
+        // Show practice screen first so celebration renders properly
+        showScreen('practice');
+        updateWord(); // Update display with test word
+        updateProgressBar(); // Update progress bar
+        
+        // Trigger celebration after a brief delay
+        setTimeout(() => {
+            const testTime = Math.floor(Math.random() * 60) + 30; // Random time between 30-90 seconds
+            const messages = ['NEW BEST TIME!', 'FIRST COMPLETION!'];
+            const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+            createCelebration(testTime, randomMessage);
+            
+            // Restore original data after celebration
+            setTimeout(() => {
+                words = originalWords;
+                currentWordIndex = originalIndex;
+                console.log('Test celebration complete. Original data restored.');
+            }, 5000); // Restore after 5 seconds (after celebration ends)
+        }, 100);
+    });
+    optionsScreen.addChild(testCelebrationButton);
     
     // Back to Title button
     const backToTitleButton = createButton('Back to Title', app.screen.width / 2, app.screen.height / 2 + 100);
@@ -491,6 +907,103 @@ function createOptionsScreen() {
     optionsScreen.addChild(backToTitleButton);
     
     app.stage.addChild(optionsScreen);
+}
+
+// Create High Score Input Screen
+function createHighScoreInputScreen() {
+    highScoreInputScreen = new PIXI.Container();
+    
+    // Congratulations text
+    const congratsText = new PIXI.Text('New High Score!', {
+        fontFamily: 'Arial',
+        fontSize: 48,
+        fontWeight: 'bold',
+        fill: 0xFFD700,
+        align: 'center'
+    });
+    congratsText.anchor.set(0.5);
+    congratsText.x = app.screen.width / 2;
+    congratsText.y = app.screen.height / 4;
+    highScoreInputScreen.addChild(congratsText);
+    
+    // Instructions
+    const instructionsText = new PIXI.Text('Enter your initials (3 letters):', {
+        fontFamily: 'Arial',
+        fontSize: 24,
+        fill: 0x333333,
+        align: 'center'
+    });
+    instructionsText.anchor.set(0.5);
+    instructionsText.x = app.screen.width / 2;
+    instructionsText.y = app.screen.height / 2 - 60;
+    highScoreInputScreen.addChild(instructionsText);
+    
+    // Input display
+    const inputDisplay = new PIXI.Text('___', {
+        fontFamily: 'Courier New',
+        fontSize: 48,
+        fontWeight: 'bold',
+        fill: 0x000000,
+        align: 'center'
+    });
+    inputDisplay.anchor.set(0.5);
+    inputDisplay.x = app.screen.width / 2;
+    inputDisplay.y = app.screen.height / 2;
+    highScoreInputScreen.addChild(inputDisplay);
+    
+    // Instructions for controls
+    const controlsText = new PIXI.Text('Type your initials and press ENTER\n(or click Submit)', {
+        fontFamily: 'Arial',
+        fontSize: 18,
+        fill: 0x666666,
+        align: 'center'
+    });
+    controlsText.anchor.set(0.5);
+    controlsText.x = app.screen.width / 2;
+    controlsText.y = app.screen.height / 2 + 60;
+    highScoreInputScreen.addChild(controlsText);
+    
+    // Submit button
+    const submitButton = createButton('Submit', app.screen.width / 2, app.screen.height / 2 + 120);
+    submitButton.on('pointerdown', () => {
+        submitHighScore();
+    });
+    highScoreInputScreen.addChild(submitButton);
+    
+    app.stage.addChild(highScoreInputScreen);
+}
+
+// Create High Score View Screen
+function createHighScoreViewScreen() {
+    highScoreViewScreen = new PIXI.Container();
+    
+    // Title
+    const titleText = new PIXI.Text('High Scores', {
+        fontFamily: 'Arial',
+        fontSize: 48,
+        fontWeight: 'bold',
+        fill: 0x333333,
+        align: 'center'
+    });
+    titleText.anchor.set(0.5);
+    titleText.x = app.screen.width / 2;
+    titleText.y = 80;
+    highScoreViewScreen.addChild(titleText);
+    
+    // Scores container (will be populated dynamically)
+    const scoresContainer = new PIXI.Container();
+    scoresContainer.x = app.screen.width / 2;
+    scoresContainer.y = 150;
+    highScoreViewScreen.addChild(scoresContainer);
+    
+    // Back button
+    const backButton = createButton('Back to Title', app.screen.width / 2, app.screen.height - 100);
+    backButton.on('pointerdown', () => {
+        showScreen('title');
+    });
+    highScoreViewScreen.addChild(backButton);
+    
+    app.stage.addChild(highScoreViewScreen);
 }
 
 // Helper function to create a button
@@ -543,8 +1056,21 @@ function showScreen(screen) {
     
     titleScreen.visible = (screen === 'title');
     practiceScreen.visible = (screen === 'practice');
+    raceScreen.visible = (screen === 'race');
     endScreen.visible = (screen === 'end');
     optionsScreen.visible = (screen === 'options');
+    if (highScoreInputScreen) {
+        highScoreInputScreen.visible = (screen === 'highScoreInput');
+        if (screen === 'highScoreInput') {
+            updateHighScoreInput();
+        }
+    }
+    if (highScoreViewScreen) {
+        highScoreViewScreen.visible = (screen === 'highScoreView');
+        if (screen === 'highScoreView') {
+            updateHighScoreView();
+        }
+    }
 }
 
 // Update the displayed word with a random font
@@ -559,6 +1085,11 @@ function updateWord() {
         
         // Update progress bar
         updateProgressBar();
+        
+        // Update race positions if in race mode
+        if (currentScreen === 'race') {
+            updateRacePositions();
+        }
         
         console.log(`Word ${currentWordIndex + 1}/${words.length}: "${word}" in ${randomFont}`);
     }
@@ -763,7 +1294,21 @@ function handleNext() {
                 backButtonUses: backButtonUses
             });
             
-            // Show celebration for first completion or new best time
+            // Check if it's a high score
+            if (gameData.isTopTenScore(duration)) {
+                // Store pending score for initials input
+                pendingScore = {
+                    time: duration,
+                    wordsCount: words.length,
+                    isNewBest: isNewBest
+                };
+                // Initialize input state
+                currentInitials = '';
+                showScreen('highScoreInput');
+                return; // Don't show end screen yet
+            }
+            
+            // Show celebration for first completion or new best time (if not high score)
             if (isNewBest) {
                 const celebrationMessage = isFirstCompletion ? 'FIRST COMPLETION!' : 'NEW BEST TIME!';
                 createCelebration(duration, celebrationMessage);
@@ -794,11 +1339,23 @@ function handleBack() {
 
 // Handle keyboard input
 function handleKeyPress(event) {
-    if (currentScreen === 'practice') {
+    if (currentScreen === 'practice' || currentScreen === 'race') {
         if (event.key === 'ArrowRight') {
             handleNext();
         } else if (event.key === 'ArrowLeft') {
             handleBack();
+        }
+    } else if (currentScreen === 'highScoreInput') {
+        if (event.key === 'Enter') {
+            submitHighScore();
+        } else if (event.key === 'Backspace') {
+            currentInitials = currentInitials.slice(0, -1);
+            updateHighScoreInput();
+        } else if (event.key.length === 1 && event.key.match(/[a-zA-Z]/)) {
+            if (currentInitials.length < 3) {
+                currentInitials += event.key.toUpperCase();
+                updateHighScoreInput();
+            }
         }
     }
 }
@@ -821,6 +1378,10 @@ function handleResize() {
             titleScreen.children[3].x = app.screen.width / 2; // options button
             titleScreen.children[3].y = app.screen.height / 2 + 180;
         }
+        if (titleScreen.children.length > 4) {
+            titleScreen.children[4].x = app.screen.width / 2; // high scores button
+            titleScreen.children[4].y = app.screen.height / 2 + 260;
+        }
     }
     
     // Update options screen positions
@@ -828,9 +1389,15 @@ function handleResize() {
         optionsScreen.children[0].x = app.screen.width / 2; // title
         optionsScreen.children[0].y = app.screen.height / 4;
         optionsScreen.children[1].x = app.screen.width / 2; // reset button
-        optionsScreen.children[1].y = app.screen.height / 2;
-        optionsScreen.children[2].x = app.screen.width / 2; // back button
-        optionsScreen.children[2].y = app.screen.height / 2 + 100;
+        optionsScreen.children[1].y = app.screen.height / 2 - 50;
+        if (optionsScreen.children.length > 2) {
+            optionsScreen.children[2].x = app.screen.width / 2; // test celebration button
+            optionsScreen.children[2].y = app.screen.height / 2 + 20;
+        }
+        if (optionsScreen.children.length > 3) {
+            optionsScreen.children[3].x = app.screen.width / 2; // back button
+            optionsScreen.children[3].y = app.screen.height / 2 + 100;
+        }
     }
     
     // Update practice screen positions

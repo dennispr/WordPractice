@@ -7,7 +7,7 @@
     "dev": "webpack --mode development --watch",
     "build": "webpack --mode production",
     "build:dev": "webpack --mode development",
-    "serve": "npx http-server dist -p 8080 -o",
+    "serve": "npx http-server dist -p 8080 -o || npx http-server dist -p 8081 -o",
     "start": "npm run build && npm run serve"
   },
   "keywords": [
@@ -15,8 +15,8 @@
     "word-practice",
     "education"
   ],
-  "author": "",
-  "license": "MIT",
+  "author": "Videogame Workshop LLC",
+  "license": "individual",
   "dependencies": {
     "pixi.js": "^7.3.0"
   },
