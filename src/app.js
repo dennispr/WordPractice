@@ -560,21 +560,8 @@ function createTitleScreen() {
 function createPracticeScreen() {
     practiceScreen = new PIXI.Container();
     
-    // Word text (will be updated dynamically)
-    wordText = new PIXI.Text('', {
-        fontFamily: 'Arial',
-        fontSize: 64,
-        fontWeight: 'bold',
-        fill: 0x000000,
-        align: 'center'
-    });
-    wordText.anchor.set(0.5);
-    wordText.x = app.screen.width / 2;
-    wordText.y = app.screen.height / 2;
-    practiceScreen.addChild(wordText);
-    
-    // Store word text reference on the screen for easy switching
-    practiceScreen.wordText = wordText;
+    // Create shared word display
+    wordText = createWordDisplay(practiceScreen);
     
     // Progress bar background
     progressBarBg = new PIXI.Graphics();
@@ -609,15 +596,10 @@ function createPracticeScreen() {
     celebrationContainer.visible = false;
     practiceScreen.addChild(celebrationContainer);
     
-    // Back button
-    backButton = createButton('Back', app.screen.width / 2 - 120, app.screen.height - 100);
-    backButton.on('pointerdown', handleBack);
-    practiceScreen.addChild(backButton);
-    
-    // Next button
-    nextButton = createButton('Next', app.screen.width / 2 + 120, app.screen.height - 100);
-    nextButton.on('pointerdown', handleNext);
-    practiceScreen.addChild(nextButton);
+    // Create shared navigation buttons
+    const buttons = createNavigationButtons(practiceScreen);
+    backButton = buttons.back;
+    nextButton = buttons.next;
     
     app.stage.addChild(practiceScreen);
 }
@@ -690,31 +672,12 @@ function createRaceScreen() {
     recentLabel.y = 55;
     raceTrackContainer.addChild(recentLabel);
     
-    // Word text (same as practice mode)
-    const raceWordText = new PIXI.Text('', {
-        fontFamily: 'Arial',
-        fontSize: 64,
-        fontWeight: 'bold',
-        fill: 0x000000,
-        align: 'center'
-    });
-    raceWordText.anchor.set(0.5);
-    raceWordText.x = app.screen.width / 2;
-    raceWordText.y = app.screen.height / 2;
-    raceScreen.addChild(raceWordText);
+    // Create shared word display (will be set as active wordText when in race mode)
+    const raceWordDisplay = createWordDisplay(raceScreen);
+    raceScreen.wordText = raceWordDisplay;
     
-    // Navigation buttons (same as practice mode)
-    const raceBackButton = createButton('Back', app.screen.width / 2 - 120, app.screen.height - 100);
-    raceBackButton.on('pointerdown', handleBack);
-    raceScreen.addChild(raceBackButton);
-    
-    const raceNextButton = createButton('Next', app.screen.width / 2 + 120, app.screen.height - 100);
-    raceNextButton.on('pointerdown', handleNext);
-    raceScreen.addChild(raceNextButton);
-    
-    // Store word text reference globally so updateWord() can access it
-    // This will be switched when changing between practice and race modes
-    raceScreen.wordText = raceWordText;
+    // Create shared navigation buttons
+    createNavigationButtons(raceScreen);
     
     app.stage.addChild(raceScreen);
     
@@ -744,10 +707,15 @@ function initRaceMode() {
         raceData.recentTime = 600;
     }
     
-    // Reset racer positions
-    racers.best.x = raceTrack.startX;
-    racers.current.x = raceTrack.startX;
-    racers.recent.x = raceTrack.startX;
+    // Reset racer positions (with safety check)
+    if (raceTrack && racers.best && racers.current && racers.recent) {
+        racers.best.x = raceTrack.startX;
+        racers.current.x = raceTrack.startX;
+        racers.recent.x = raceTrack.startX;
+    } else {
+        console.error('Race track or racers not properly initialized');
+        return;
+    }
     
     console.log(`Race initialized: Best ${raceData.bestTime}s, Recent ${raceData.recentTime}s, Words ${raceData.totalWords}`);
 }
@@ -755,6 +723,10 @@ function initRaceMode() {
 // Update race positions
 function updateRacePositions() {
     if (currentScreen !== 'race' || !raceData.currentStartTime) return;
+    if (!raceTrack || !racers.best || !racers.current || !racers.recent) {
+        console.error('Race components not properly initialized');
+        return;
+    }
     
     const currentTime = (new Date() - raceData.currentStartTime) / 1000; // seconds elapsed
     const currentProgress = currentWordIndex / raceData.totalWords; // 0 to 1
@@ -1034,10 +1006,11 @@ function showScreen(screen) {
     optionsScreen.visible = (screen === 'options');
     
     // Set the correct wordText reference for the active screen
-    if (screen === 'practice') {
-        wordText = practiceScreen.wordText;
-    } else if (screen === 'race') {
+    if (screen === 'race') {
         wordText = raceScreen.wordText;
+    } else {
+        // Default to practice screen wordText for all other modes that use words
+        // (Currently only practice and race modes display words)
     }
     
     if (highScoreInputScreen) {
