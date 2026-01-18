@@ -677,7 +677,9 @@ function createRaceScreen() {
     raceScreen.wordText = raceWordDisplay;
     
     // Create shared navigation buttons
-    createNavigationButtons(raceScreen);
+    const raceButtons = createNavigationButtons(raceScreen);
+    raceScreen.backButton = raceButtons.back;
+    raceScreen.nextButton = raceButtons.next;
     
     app.stage.addChild(raceScreen);
     
@@ -995,6 +997,53 @@ function createButton(text, x, y) {
     return button;
 }
 
+// Shared function to create word display - used by both practice and race modes
+function createWordDisplay(parentContainer) {
+    // Word text (will be updated dynamically)
+    const wordDisplay = new PIXI.Text('', {
+        fontFamily: 'Arial',
+        fontSize: 64,
+        fontWeight: 'bold',
+        fill: 0x000000,
+        align: 'center'
+    });
+    wordDisplay.anchor.set(0.5);
+    wordDisplay.x = app.screen.width / 2;
+    wordDisplay.y = app.screen.height / 2;
+    parentContainer.addChild(wordDisplay);
+    
+    return wordDisplay;
+}
+
+// Shared function to create navigation buttons - used by both practice and race modes
+function createNavigationButtons(parentContainer) {
+    // Back button
+    const backBtn = createButton('Back', app.screen.width / 2 - 120, app.screen.height - 100);
+    backBtn.on('pointerdown', handleBack);
+    parentContainer.addChild(backBtn);
+    
+    // Next button
+    const nextBtn = createButton('Next', app.screen.width / 2 + 120, app.screen.height - 100);
+    nextBtn.on('pointerdown', handleNext);
+    parentContainer.addChild(nextBtn);
+    
+    return { back: backBtn, next: nextBtn };
+}
+
+// Shared function to update word display with font randomization - used by both modes
+function updateWordDisplay(wordDisplayElement) {
+    if (currentWordIndex >= 0 && currentWordIndex < words.length) {
+        const word = words[currentWordIndex];
+        const randomFont = GOOGLE_FONTS[Math.floor(Math.random() * GOOGLE_FONTS.length)];
+        
+        wordDisplayElement.text = word;
+        wordDisplayElement.style.fontFamily = randomFont;
+        currentFont = randomFont;
+        
+        console.log(`Word ${currentWordIndex + 1}/${words.length}: "${word}" in ${randomFont}`);
+    }
+}
+
 // Show a specific screen
 function showScreen(screen) {
     currentScreen = screen;
@@ -1008,9 +1057,9 @@ function showScreen(screen) {
     // Set the correct wordText reference for the active screen
     if (screen === 'race') {
         wordText = raceScreen.wordText;
-    } else {
-        // Default to practice screen wordText for all other modes that use words
-        // (Currently only practice and race modes display words)
+    } else if (screen === 'practice') {
+        // wordText is already set to the practice screen's word display
+        // No need to change it since it was created directly in createPracticeScreen
     }
     
     if (highScoreInputScreen) {
@@ -1029,25 +1078,17 @@ function showScreen(screen) {
 
 // Update the displayed word with a random font
 function updateWord() {
-    if (currentWordIndex >= 0 && currentWordIndex < words.length) {
-        const word = words[currentWordIndex];
-        const randomFont = GOOGLE_FONTS[Math.floor(Math.random() * GOOGLE_FONTS.length)];
-        
-        wordText.text = word;
-        wordText.style.fontFamily = randomFont;
-        currentFont = randomFont;
-        
-        // Update progress bar only in practice mode
-        if (currentScreen === 'practice') {
-            updateProgressBar();
-        }
-        
-        // Update race positions if in race mode
-        if (currentScreen === 'race') {
-            updateRacePositions();
-        }
-        
-        console.log(`Word ${currentWordIndex + 1}/${words.length}: "${word}" in ${randomFont}`);
+    // Update the word display using shared function
+    updateWordDisplay(wordText);
+    
+    // Update progress bar only in practice mode
+    if (currentScreen === 'practice') {
+        updateProgressBar();
+    }
+    
+    // Update race positions if in race mode
+    if (currentScreen === 'race') {
+        updateRacePositions();
     }
 }
 
@@ -1421,10 +1462,31 @@ function handleResize() {
             }
         }
         
-        backButton.x = app.screen.width / 2 - 120;
-        backButton.y = app.screen.height - 100;
-        nextButton.x = app.screen.width / 2 + 120;
-        nextButton.y = app.screen.height - 100;
+        // Update navigation button positions
+        if (backButton) {
+            backButton.x = app.screen.width / 2 - 120;
+            backButton.y = app.screen.height - 100;
+        }
+        if (nextButton) {
+            nextButton.x = app.screen.width / 2 + 120;
+            nextButton.y = app.screen.height - 100;
+        }
+    }
+    
+    // Update race screen positions
+    if (raceScreen && raceScreen.visible && raceScreen.wordText) {
+        raceScreen.wordText.x = app.screen.width / 2;
+        raceScreen.wordText.y = app.screen.height / 2;
+        
+        // Update race navigation button positions
+        if (raceScreen.backButton) {
+            raceScreen.backButton.x = app.screen.width / 2 - 120;
+            raceScreen.backButton.y = app.screen.height - 100;
+        }
+        if (raceScreen.nextButton) {
+            raceScreen.nextButton.x = app.screen.width / 2 + 120;
+            raceScreen.nextButton.y = app.screen.height - 100;
+        }
     }
     
     // Update end screen positions
