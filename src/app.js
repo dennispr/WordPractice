@@ -52,6 +52,7 @@ let progressText;
 const BUTTON_COOLDOWN = 500; // 500ms cooldown
 let lastNextTime = 0;
 let lastBackTime = 0;
+let canNavigate = true; // Navigation availability flag
 
 // Game session tracking
 let sessionStartTime = null;
@@ -572,6 +573,9 @@ function createPracticeScreen() {
     wordText.y = app.screen.height / 2;
     practiceScreen.addChild(wordText);
     
+    // Store word text reference on the screen for easy switching
+    practiceScreen.wordText = wordText;
+    
     // Progress bar background
     progressBarBg = new PIXI.Graphics();
     progressBarBg.beginFill(0xcccccc);
@@ -699,49 +703,18 @@ function createRaceScreen() {
     raceWordText.y = app.screen.height / 2;
     raceScreen.addChild(raceWordText);
     
-    // Progress bar (bottom of screen, same as practice)
-    const raceProgressBarBg = new PIXI.Graphics();
-    raceProgressBarBg.beginFill(0xcccccc);
-    raceProgressBarBg.drawRoundedRect(0, 0, 400, 20, 10);
-    raceProgressBarBg.endFill();
-    raceProgressBarBg.x = app.screen.width / 2 - 200;
-    raceProgressBarBg.y = app.screen.height - 50;
-    raceScreen.addChild(raceProgressBarBg);
-    
-    const raceProgressBarFill = new PIXI.Graphics();
-    raceProgressBarFill.x = app.screen.width / 2 - 200;
-    raceProgressBarFill.y = app.screen.height - 50;
-    raceScreen.addChild(raceProgressBarFill);
-    
-    // Progress text
-    const raceProgressText = new PIXI.Text('', {
-        fontFamily: 'Arial',
-        fontSize: 18,
-        fontWeight: 'bold',
-        fill: 0x666666,
-        align: 'center'
-    });
-    raceProgressText.anchor.set(0.5);
-    raceProgressText.x = app.screen.width / 2;
-    raceProgressText.y = app.screen.height - 20;
-    raceScreen.addChild(raceProgressText);
-    
     // Navigation buttons (same as practice mode)
-    const raceBackButton = createButton('◀ Back', 150, app.screen.height - 120);
-    raceBackButton.on('pointerdown', () => {
-        if (canNavigate) {
-            handleBack();
-        }
-    });
+    const raceBackButton = createButton('Back', app.screen.width / 2 - 120, app.screen.height - 100);
+    raceBackButton.on('pointerdown', handleBack);
     raceScreen.addChild(raceBackButton);
     
-    const raceNextButton = createButton('Next ▶', app.screen.width - 150, app.screen.height - 120);
-    raceNextButton.on('pointerdown', () => {
-        if (canNavigate) {
-            handleNext();
-        }
-    });
+    const raceNextButton = createButton('Next', app.screen.width / 2 + 120, app.screen.height - 100);
+    raceNextButton.on('pointerdown', handleNext);
     raceScreen.addChild(raceNextButton);
+    
+    // Store word text reference globally so updateWord() can access it
+    // This will be switched when changing between practice and race modes
+    raceScreen.wordText = raceWordText;
     
     app.stage.addChild(raceScreen);
     
@@ -1059,6 +1032,14 @@ function showScreen(screen) {
     raceScreen.visible = (screen === 'race');
     endScreen.visible = (screen === 'end');
     optionsScreen.visible = (screen === 'options');
+    
+    // Set the correct wordText reference for the active screen
+    if (screen === 'practice') {
+        wordText = practiceScreen.wordText;
+    } else if (screen === 'race') {
+        wordText = raceScreen.wordText;
+    }
+    
     if (highScoreInputScreen) {
         highScoreInputScreen.visible = (screen === 'highScoreInput');
         if (screen === 'highScoreInput') {
@@ -1083,8 +1064,10 @@ function updateWord() {
         wordText.style.fontFamily = randomFont;
         currentFont = randomFont;
         
-        // Update progress bar
-        updateProgressBar();
+        // Update progress bar only in practice mode
+        if (currentScreen === 'practice') {
+            updateProgressBar();
+        }
         
         // Update race positions if in race mode
         if (currentScreen === 'race') {
@@ -1268,55 +1251,93 @@ function handleNext() {
         currentWordIndex++;
         updateWord();
     } else {
-        // Reached the end - save session data
-        if (sessionStartTime) {
-            const endTime = new Date();
-            const startTime = new Date(sessionStartTime);
-            const duration = Math.round((endTime - startTime) / 1000); // seconds
-            
-            // Check if this is a new best time before saving
-            const currentStats = gameData.getStats();
-            const isFirstCompletion = currentStats.bestTime === null;
-            const isNewBest = isFirstCompletion || duration < currentStats.bestTime;
-            
-            if (isFirstCompletion) {
-                console.log('🎉 First completion ever! Time:', duration, 'seconds');
-            } else if (duration < currentStats.bestTime) {
-                console.log('🎉 New best time! Previous:', currentStats.bestTime, 'New:', duration);
-            }
-            
-            gameData.saveSession({
-                startTime: sessionStartTime,
-                duration: duration,
-                completed: true,
-                wordsCount: words.length,
-                shuffled: true, // We don't track if it was shuffled, assume true
-                backButtonUses: backButtonUses
-            });
-            
-            // Check if it's a high score
-            if (gameData.isTopTenScore(duration)) {
-                // Store pending score for initials input
-                pendingScore = {
-                    time: duration,
-                    wordsCount: words.length,
-                    isNewBest: isNewBest
-                };
-                // Initialize input state
-                currentInitials = '';
-                showScreen('highScoreInput');
-                return; // Don't show end screen yet
-            }
-            
-            // Show celebration for first completion or new best time (if not high score)
-            if (isNewBest) {
-                const celebrationMessage = isFirstCompletion ? 'FIRST COMPLETION!' : 'NEW BEST TIME!';
-                createCelebration(duration, celebrationMessage);
-            }
+        // Reached the end - handle completion based on current screen
+        if (currentScreen === 'race') {
+            handleRaceCompletion();
+        } else {
+            handlePracticeCompletion();
         }
-        
-        showScreen('end');
     }
+}
+
+// Handle race mode completion
+function handleRaceCompletion() {
+    if (!sessionStartTime) {
+        showScreen('end');
+        return;
+    }
+    
+    const endTime = new Date();
+    const startTime = new Date(sessionStartTime);
+    const duration = Math.round((endTime - startTime) / 1000); // seconds
+    
+    console.log(`🏁 Race completed in ${duration} seconds!`);
+    
+    // Show race results with position information
+    const currentTime = (endTime - raceData.currentStartTime) / 1000;
+    let position = 1;
+    
+    if (currentTime > raceData.bestTime) position++;
+    if (currentTime > raceData.recentTime) position++;
+    
+    console.log(`🏆 Race finish position: ${position}/3`);
+    
+    // Continue with standard completion logic (high scores, celebrations, etc.)
+    handlePracticeCompletion();
+}
+
+// Handle practice mode completion (contains original completion logic)
+function handlePracticeCompletion() {
+    if (!sessionStartTime) {
+        showScreen('end');
+        return;
+    }
+    
+    const endTime = new Date();
+    const startTime = new Date(sessionStartTime);
+    const duration = Math.round((endTime - startTime) / 1000); // seconds
+    
+    // Check if this is a new best time before saving
+    const currentStats = gameData.getStats();
+    const isFirstCompletion = currentStats.bestTime === null;
+    const isNewBest = isFirstCompletion || duration < currentStats.bestTime;
+    
+    if (isFirstCompletion) {
+        console.log('🎉 First completion ever! Time:', duration, 'seconds');
+    } else if (duration < currentStats.bestTime) {
+        console.log('🎉 New best time! Previous:', currentStats.bestTime, 'New:', duration);
+    }
+    
+    gameData.saveSession({
+        startTime: sessionStartTime,
+        duration: duration,
+        completed: true,
+        wordsCount: words.length,
+        shuffled: true, // We don't track if it was shuffled, assume true
+        backButtonUses: backButtonUses
+    });
+    
+    // Check if it's a high score
+    if (gameData.isTopTenScore(duration)) {
+        // Store pending score for initials input
+        pendingScore = {
+            time: duration,
+            wordsCount: words.length,
+            isNewBest: isNewBest
+        };
+        // Initialize input state
+        currentInitials = '';
+        showScreen('highScoreInput');
+        return; // Don't show end screen yet
+    }
+    
+    // Show celebration for first completion or new best time (if not high score)
+    if (isNewBest) {
+        const celebrationMessage = isFirstCompletion ? 'FIRST COMPLETION!' : 'NEW BEST TIME!';
+        createCelebration(duration, celebrationMessage);
+    }
+    
+    showScreen('end');
 }
 
 // Handle back button/arrow key
