@@ -21,6 +21,7 @@ let currentScreen = 'title'; // 'title', 'practice', 'end'
 let titleScreen;
 let practiceScreen;
 let endScreen;
+let optionsScreen;
 
 // Practice screen elements
 let wordText;
@@ -30,6 +31,228 @@ let currentFont;
 let progressBarBg;
 let progressBarFill;
 let progressText;
+
+// Cooldown for button presses (in milliseconds)
+const BUTTON_COOLDOWN = 500; // 500ms cooldown
+let lastNextTime = 0;
+let lastBackTime = 0;
+
+// Game session tracking
+let sessionStartTime = null;
+let backButtonUses = 0;
+
+// Celebration system
+let celebrationContainer;
+let celebrationText;
+let confettiParticles = [];
+let celebrationActive = false;
+
+// Game Data Manager for localStorage
+class GameDataManager {
+    constructor(gameId, gameName, developer) {
+        this.gameId = gameId;
+        this.gameName = gameName;
+        this.developer = developer;
+        this.storageKey = 'gameAppData';
+    }
+
+    // Initialize or load existing data
+    initData() {
+        let data;
+        try {
+            const existing = localStorage.getItem(this.storageKey);
+            data = existing ? JSON.parse(existing) : null;
+        } catch (e) {
+            console.warn('Failed to parse saved data, creating new:', e);
+            data = null;
+        }
+        
+        if (!data) {
+            data = {
+                version: "1.0",
+                developer: this.developer || "Unknown Developer",
+                user: {
+                    userId: `user_${Date.now()}`,
+                    createdAt: new Date().toISOString(),
+                    preferences: {}
+                },
+                games: {},
+                achievements: []
+            };
+            localStorage.setItem(this.storageKey, JSON.stringify(data));
+        }
+        
+        // Ensure all required fields exist with defaults
+        if (!data.version) {
+            console.log('Save data: Missing version, applying default "1.0"');
+            data.version = "1.0";
+        }
+        if (!data.developer) {
+            console.log('Save data: Missing developer, applying default:', this.developer || "Unknown Developer");
+            data.developer = this.developer || "Unknown Developer";
+        }
+        if (!data.user) {
+            console.log('Save data: Missing user object, creating default');
+            data.user = {};
+        }
+        if (!data.user.userId) {
+            console.log('Save data: Missing user ID, generating new one');
+            data.user.userId = `user_${Date.now()}`;
+        }
+        if (!data.user.createdAt) {
+            console.log('Save data: Missing user creation date, applying current timestamp');
+            data.user.createdAt = new Date().toISOString();
+        }
+        if (!data.user.preferences) {
+            console.log('Save data: Missing user preferences, creating empty object');
+            data.user.preferences = {};
+        }
+        if (!data.games) {
+            console.log('Save data: Missing games object, creating empty object');
+            data.games = {};
+        }
+        if (!data.achievements) {
+            console.log('Save data: Missing achievements array, creating empty array');
+            data.achievements = [];
+        }
+        
+        return data;
+    }
+
+    // Save a new game session
+    saveSession(sessionData) {
+        const data = this.initData();
+        
+        // Ensure sessionData has defaults
+        const session = {};
+        
+        if (!sessionData.startTime) {
+            console.log('Session data: Missing start time, using current timestamp');
+            session.startTime = new Date().toISOString();
+        } else {
+            session.startTime = sessionData.startTime;
+        }
+        
+        if (sessionData.duration === undefined || sessionData.duration === null) {
+            console.log('Session data: Missing duration, defaulting to 0');
+            session.duration = 0;
+        } else {
+            session.duration = sessionData.duration;
+        }
+        
+        if (sessionData.completed === undefined || sessionData.completed === null) {
+            console.log('Session data: Missing completed status, defaulting to false');
+            session.completed = false;
+        } else {
+            session.completed = sessionData.completed;
+        }
+        
+        if (!sessionData.wordsCount) {
+            console.log('Session data: Missing word count, defaulting to 0');
+            session.wordsCount = 0;
+        } else {
+            session.wordsCount = sessionData.wordsCount;
+        }
+        
+        if (sessionData.shuffled === undefined || sessionData.shuffled === null) {
+            console.log('Session data: Missing shuffle status, defaulting to false');
+            session.shuffled = false;
+        } else {
+            session.shuffled = sessionData.shuffled;
+        }
+        
+        if (!sessionData.backButtonUses) {
+            console.log('Session data: Missing back button usage, defaulting to 0');
+            session.backButtonUses = 0;
+        } else {
+            session.backButtonUses = sessionData.backButtonUses;
+        }
+        
+        if (!data.games[this.gameId]) {
+            data.games[this.gameId] = {
+                gameInfo: {
+                    name: this.gameName || "Unknown Game",
+                    developer: this.developer || "Unknown Developer",
+                    version: "1.0",
+                    firstPlayed: new Date().toISOString(),
+                    totalSessions: 0
+                },
+                stats: {
+                    bestTime: null, // Start as null until first real completion
+                    averageTime: 0,
+                    totalCompletions: 0,
+                    totalWordsCompleted: 0
+                },
+                sessions: [],
+                settings: {}
+            };
+        }
+
+        // Add session with generated ID
+        const sessionWithId = {
+            sessionId: `session_${Date.now()}`,
+            endTime: new Date().toISOString(),
+            ...session
+        };
+
+        data.games[this.gameId].sessions.push(sessionWithId);
+        data.games[this.gameId].gameInfo.totalSessions++;
+        data.games[this.gameId].gameInfo.lastPlayed = sessionWithId.endTime;
+        
+        // Update stats only if completed with valid duration
+        if (session.completed && session.duration > 0) {
+            const stats = data.games[this.gameId].stats;
+            stats.totalCompletions++;
+            stats.totalWordsCompleted += session.wordsCount;
+            
+            // Only update bestTime if we have a valid time and it's better than current best
+            if (stats.bestTime === null || session.duration < stats.bestTime) {
+                stats.bestTime = session.duration;
+            }
+            
+            // Calculate average time from completed sessions only
+            const completedSessions = data.games[this.gameId].sessions.filter(s => s.completed && s.duration > 0);
+            if (completedSessions.length > 0) {
+                stats.averageTime = Math.round(completedSessions.reduce((sum, s) => sum + s.duration, 0) / completedSessions.length);
+            }
+        }
+
+        localStorage.setItem(this.storageKey, JSON.stringify(data));
+        console.log('Game session saved:', sessionWithId);
+    }
+
+    // Get game statistics
+    getStats() {
+        const data = this.initData();
+        const gameStats = data.games[this.gameId]?.stats || {};
+        
+        // Return stats with safe defaults
+        return {
+            bestTime: gameStats.bestTime || null,
+            averageTime: gameStats.averageTime || 0,
+            totalCompletions: gameStats.totalCompletions || 0,
+            totalWordsCompleted: gameStats.totalWordsCompleted || 0
+        };
+    }
+}
+
+// Initialize game data manager
+const gameData = new GameDataManager('word-practice', 'Word Practice', 'Videogame Workshop LLC');
+
+// Reset all save data to defaults
+function resetSaveData() {
+    // Show confirmation in console
+    console.log('🔄 Resetting all save data...');
+    
+    // Remove all saved data
+    localStorage.removeItem('gameAppData');
+    
+    // Force re-initialization with defaults
+    const newData = gameData.initData();
+    
+    console.log('✅ Save data reset complete. New data structure:', newData);
+    console.log('📊 All stats, best times, and session history have been cleared.');
+}
 
 // Initialize the Pixi Application
 async function init() {
@@ -48,6 +271,7 @@ async function init() {
     createTitleScreen();
     createPracticeScreen();
     createEndScreen();
+    createOptionsScreen();
     
     // Show title screen
     showScreen('title');
@@ -104,6 +328,8 @@ function createTitleScreen() {
     const startButton = createButton('Start', app.screen.width / 2, app.screen.height / 2 + 20);
     startButton.on('pointerdown', () => {
         currentWordIndex = 0;
+        sessionStartTime = new Date().toISOString();
+        backButtonUses = 0;
         showScreen('practice');
         updateWord();
     });
@@ -116,6 +342,13 @@ function createTitleScreen() {
         currentWordIndex = 0;
     });
     titleScreen.addChild(shuffleButton);
+    
+    // Options button
+    const optionsButton = createButton('Options', app.screen.width / 2, app.screen.height / 2 + 180);
+    optionsButton.on('pointerdown', () => {
+        showScreen('options');
+    });
+    titleScreen.addChild(optionsButton);
     
     app.stage.addChild(titleScreen);
 }
@@ -165,6 +398,11 @@ function createPracticeScreen() {
     progressText.y = app.screen.height - 20;
     practiceScreen.addChild(progressText);
     
+    // Celebration container (hidden by default)
+    celebrationContainer = new PIXI.Container();
+    celebrationContainer.visible = false;
+    practiceScreen.addChild(celebrationContainer);
+    
     // Back button
     backButton = createButton('Back', app.screen.width / 2 - 120, app.screen.height - 100);
     backButton.on('pointerdown', handleBack);
@@ -207,6 +445,8 @@ function createEndScreen() {
     shuffleAgainButton.on('pointerdown', () => {
         shuffleWords();
         currentWordIndex = 0;
+        sessionStartTime = new Date().toISOString();
+        backButtonUses = 0;
         showScreen('practice');
         updateWord();
     });
@@ -214,6 +454,43 @@ function createEndScreen() {
     endScreen.addChild(shuffleAgainButton);
     
     app.stage.addChild(endScreen);
+}
+
+// Create Options Screen
+function createOptionsScreen() {
+    optionsScreen = new PIXI.Container();
+    
+    // Options title
+    const optionsTitle = new PIXI.Text('Options', {
+        fontFamily: 'Arial',
+        fontSize: 48,
+        fontWeight: 'bold',
+        fill: 0x333333,
+        align: 'center'
+    });
+    optionsTitle.anchor.set(0.5);
+    optionsTitle.x = app.screen.width / 2;
+    optionsTitle.y = app.screen.height / 4;
+    optionsScreen.addChild(optionsTitle);
+    
+    // Reset Progress button
+    const resetButton = createButton('Reset Progress', app.screen.width / 2, app.screen.height / 2);
+    resetButton.on('pointerdown', () => {
+        if (confirm('Are you sure you want to reset all progress? This cannot be undone.')) {
+            resetSaveData();
+            showScreen('title'); // Return to title after reset
+        }
+    });
+    optionsScreen.addChild(resetButton);
+    
+    // Back to Title button
+    const backToTitleButton = createButton('Back to Title', app.screen.width / 2, app.screen.height / 2 + 100);
+    backToTitleButton.on('pointerdown', () => {
+        showScreen('title');
+    });
+    optionsScreen.addChild(backToTitleButton);
+    
+    app.stage.addChild(optionsScreen);
 }
 
 // Helper function to create a button
@@ -267,6 +544,7 @@ function showScreen(screen) {
     titleScreen.visible = (screen === 'title');
     practiceScreen.visible = (screen === 'practice');
     endScreen.visible = (screen === 'end');
+    optionsScreen.visible = (screen === 'options');
 }
 
 // Update the displayed word with a random font
@@ -302,21 +580,214 @@ function updateProgressBar() {
     progressText.text = `${percentage}% Complete (${currentWordIndex + 1}/${words.length})`;
 }
 
+// Create celebration effect for new best time
+function createCelebration(newBestTime, message = 'NEW BEST TIME!') {
+    celebrationActive = true;
+    celebrationContainer.visible = true;
+    celebrationContainer.removeChildren(); // Clear any existing celebration
+    
+    // Create celebration text
+    celebrationText = new PIXI.Text(`🎉 ${message} 🎉`, {
+        fontFamily: 'Arial',
+        fontSize: 48,
+        fontWeight: 'bold',
+        fill: 0xFFD700, // Gold
+        align: 'center',
+        stroke: 0x000000,
+        strokeThickness: 3
+    });
+    celebrationText.anchor.set(0.5);
+    celebrationText.x = app.screen.width / 2;
+    celebrationText.y = app.screen.height / 2 - 100;
+    celebrationContainer.addChild(celebrationText);
+    
+    // Create time display
+    const timeText = new PIXI.Text(`${newBestTime} seconds!`, {
+        fontFamily: 'Arial',
+        fontSize: 32,
+        fontWeight: 'bold',
+        fill: 0xFFD700,
+        align: 'center'
+    });
+    timeText.anchor.set(0.5);
+    timeText.x = app.screen.width / 2;
+    timeText.y = app.screen.height / 2 - 50;
+    celebrationContainer.addChild(timeText);
+    
+    // Create confetti particles
+    createConfetti();
+    
+    // Animate celebration text
+    animateCelebrationText();
+    
+    // Auto-hide after 4 seconds
+    setTimeout(() => {
+        hideCelebration();
+    }, 4000);
+}
+
+// Create confetti particles
+function createConfetti() {
+    confettiParticles = [];
+    const colors = [0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xFFA726, 0x66BB6A, 0xAB47BC];
+    
+    for (let i = 0; i < 50; i++) {
+        const particle = new PIXI.Graphics();
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = Math.random() * 8 + 4;
+        
+        // Random shape - rectangle or circle
+        if (Math.random() > 0.5) {
+            particle.beginFill(color);
+            particle.drawRect(0, 0, size, size);
+            particle.endFill();
+        } else {
+            particle.beginFill(color);
+            particle.drawCircle(0, 0, size / 2);
+            particle.endFill();
+        }
+        
+        // Random starting position across top of screen
+        particle.x = Math.random() * app.screen.width;
+        particle.y = -20;
+        
+        // Random physics properties
+        particle.vx = (Math.random() - 0.5) * 4; // horizontal velocity
+        particle.vy = Math.random() * 3 + 2; // falling velocity
+        particle.rotation = Math.random() * Math.PI * 2;
+        particle.rotationSpeed = (Math.random() - 0.5) * 0.2;
+        particle.gravity = 0.1;
+        
+        confettiParticles.push(particle);
+        celebrationContainer.addChild(particle);
+    }
+    
+    // Start confetti animation
+    animateConfetti();
+}
+
+// Animate confetti particles
+function animateConfetti() {
+    if (!celebrationActive) return;
+    
+    confettiParticles.forEach((particle, index) => {
+        // Update position
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        particle.vy += particle.gravity;
+        particle.rotation += particle.rotationSpeed;
+        
+        // Remove particles that fall off screen
+        if (particle.y > app.screen.height + 50) {
+            celebrationContainer.removeChild(particle);
+            confettiParticles.splice(index, 1);
+        }
+    });
+    
+    // Continue animation
+    if (confettiParticles.length > 0) {
+        requestAnimationFrame(animateConfetti);
+    }
+}
+
+// Animate celebration text (bouncing effect)
+function animateCelebrationText() {
+    if (!celebrationActive || !celebrationText) return;
+    
+    let bouncePhase = 0;
+    const originalY = celebrationText.y;
+    
+    function bounce() {
+        if (!celebrationActive || !celebrationText) return;
+        
+        bouncePhase += 0.1;
+        celebrationText.y = originalY + Math.sin(bouncePhase) * 10;
+        celebrationText.scale.set(1 + Math.sin(bouncePhase * 2) * 0.1);
+        
+        if (bouncePhase < Math.PI * 8) { // Bounce for ~4 seconds
+            requestAnimationFrame(bounce);
+        }
+    }
+    
+    bounce();
+}
+
+// Hide celebration
+function hideCelebration() {
+    celebrationActive = false;
+    if (celebrationContainer) {
+        celebrationContainer.visible = false;
+        celebrationContainer.removeChildren();
+    }
+    confettiParticles = [];
+}
+
 // Handle next button/arrow key
 function handleNext() {
+    const currentTime = Date.now();
+    
+    // Check if cooldown period has passed
+    if (currentTime - lastNextTime < BUTTON_COOLDOWN) {
+        return; // Still in cooldown, ignore the press
+    }
+    
+    lastNextTime = currentTime;
+    
     if (currentWordIndex < words.length - 1) {
         currentWordIndex++;
         updateWord();
     } else {
-        // Reached the end
+        // Reached the end - save session data
+        if (sessionStartTime) {
+            const endTime = new Date();
+            const startTime = new Date(sessionStartTime);
+            const duration = Math.round((endTime - startTime) / 1000); // seconds
+            
+            // Check if this is a new best time before saving
+            const currentStats = gameData.getStats();
+            const isFirstCompletion = currentStats.bestTime === null;
+            const isNewBest = isFirstCompletion || duration < currentStats.bestTime;
+            
+            if (isFirstCompletion) {
+                console.log('🎉 First completion ever! Time:', duration, 'seconds');
+            } else if (duration < currentStats.bestTime) {
+                console.log('🎉 New best time! Previous:', currentStats.bestTime, 'New:', duration);
+            }
+            
+            gameData.saveSession({
+                startTime: sessionStartTime,
+                duration: duration,
+                completed: true,
+                wordsCount: words.length,
+                shuffled: true, // We don't track if it was shuffled, assume true
+                backButtonUses: backButtonUses
+            });
+            
+            // Show celebration for first completion or new best time
+            if (isNewBest) {
+                const celebrationMessage = isFirstCompletion ? 'FIRST COMPLETION!' : 'NEW BEST TIME!';
+                createCelebration(duration, celebrationMessage);
+            }
+        }
+        
         showScreen('end');
     }
 }
 
 // Handle back button/arrow key
 function handleBack() {
+    const currentTime = Date.now();
+    
+    // Check if cooldown period has passed
+    if (currentTime - lastBackTime < BUTTON_COOLDOWN) {
+        return; // Still in cooldown, ignore the press
+    }
+    
+    lastBackTime = currentTime;
+    
     if (currentWordIndex > 0) {
         currentWordIndex--;
+        backButtonUses++;
         updateWord();
     }
 }
@@ -346,6 +817,20 @@ function handleResize() {
             titleScreen.children[2].x = app.screen.width / 2; // shuffle button
             titleScreen.children[2].y = app.screen.height / 2 + 100;
         }
+        if (titleScreen.children.length > 3) {
+            titleScreen.children[3].x = app.screen.width / 2; // options button
+            titleScreen.children[3].y = app.screen.height / 2 + 180;
+        }
+    }
+    
+    // Update options screen positions
+    if (optionsScreen && optionsScreen.children.length > 0) {
+        optionsScreen.children[0].x = app.screen.width / 2; // title
+        optionsScreen.children[0].y = app.screen.height / 4;
+        optionsScreen.children[1].x = app.screen.width / 2; // reset button
+        optionsScreen.children[1].y = app.screen.height / 2;
+        optionsScreen.children[2].x = app.screen.width / 2; // back button
+        optionsScreen.children[2].y = app.screen.height / 2 + 100;
     }
     
     // Update practice screen positions
@@ -365,6 +850,14 @@ function handleResize() {
         if (progressText) {
             progressText.x = app.screen.width / 2;
             progressText.y = app.screen.height - 20;
+        }
+        
+        // Update celebration positions if active
+        if (celebrationActive && celebrationText) {
+            celebrationText.x = app.screen.width / 2;
+            if (celebrationContainer.children.length > 1) {
+                celebrationContainer.children[1].x = app.screen.width / 2; // time text
+            }
         }
         
         backButton.x = app.screen.width / 2 - 120;

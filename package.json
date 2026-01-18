@@ -4,10 +4,11 @@
   "description": "A Pixi.js web app for practicing with words",
   "main": "index.html",
   "scripts": {
-    "start": "npx http-server -p 8080 -o",
+    "dev": "webpack --mode development --watch",
     "build": "webpack --mode production",
     "build:dev": "webpack --mode development",
-    "serve:build": "npx http-server dist -p 8080 -o"
+    "serve": "npx http-server dist -p 8080 -o",
+    "start": "npm run build && npm run serve"
   },
   "keywords": [
     "pixi.js",
