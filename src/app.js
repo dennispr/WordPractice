@@ -23,6 +23,9 @@ let words = [];
 let currentWordIndex = 0;
 let currentScreen = 'title'; // 'title', 'practice', 'end'
 
+// Background elements
+let backgroundGradient;
+
 // UI containers
 let titleScreen;
 let practiceScreen;
@@ -333,33 +336,49 @@ let currentInitials = '';
 
 // Submit high score with current initials
 function submitHighScore() {
-    if (!pendingScore) return;
+    if (!pendingScore) {
+        console.log('⚠️ submitHighScore called but no pendingScore found');
+        return;
+    }
     
     const initials = currentInitials || 'AAA'; // Default if empty
     const rank = gameData.addHighScore(initials, pendingScore.time, pendingScore.wordsCount);
     
-    console.log(`High score submitted: ${initials} - ${pendingScore.time}s (Rank #${rank})`);
+    console.log(`🏆 High score submitted: ${initials} - ${pendingScore.time}s (Rank #${rank})`);
+    console.log(`📊 Is new best: ${pendingScore.isNewBest}`);
+    
+    // Store values before clearing pendingScore
+    const wasNewBest = pendingScore.isNewBest;
+    const scoreTime = pendingScore.time;
+    const wordsCount = pendingScore.wordsCount;
+    
+    // Clear state immediately
+    pendingScore = null;
+    currentInitials = '';
     
     // Show celebration if it was also a best time
-    if (pendingScore.isNewBest) {
+    if (wasNewBest) {
+        console.log('🎉 Showing celebration for new best time');
         // Switch to practice screen for celebration
         showScreen('practice');
+        
+        // Use a longer delay to ensure screen transition is complete
         setTimeout(() => {
-            const celebrationMessage = pendingScore.wordsCount === 1 ? 'FIRST COMPLETION!' : 'NEW BEST TIME!';
-            createCelebration(pendingScore.time, celebrationMessage);
+            console.log('🎊 Creating celebration...');
+            const celebrationMessage = wordsCount === 1 ? 'FIRST COMPLETION!' : 'NEW BEST TIME!';
+            createCelebration(scoreTime, celebrationMessage);
             
             // Go to end screen after celebration
             setTimeout(() => {
+                console.log('✅ Going to end screen after celebration');
                 showScreen('end');
             }, 4500);
-        }, 100);
+        }, 200);
     } else {
+        console.log('➡️ Going directly to end screen (not a new best)');
         // Go directly to end screen
         showScreen('end');
     }
-    
-    pendingScore = null;
-    currentInitials = '';
 }
 
 // Update high score input display
@@ -439,6 +458,43 @@ function resetSaveData() {
     console.log('📊 All stats, best times, and session history have been cleared.');
 }
 
+// Create rainbow gradient background
+function createRainbowBackground() {
+    backgroundGradient = new PIXI.Graphics();
+    
+    // Create canvas for gradient
+    const canvas = document.createElement('canvas');
+    canvas.width = app.screen.width || 800;
+    canvas.height = app.screen.height || 600;
+    const ctx = canvas.getContext('2d');
+    
+    // Create rainbow gradient
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, 'rgba(255, 0, 0, 0.1)');     // Red
+    gradient.addColorStop(0.17, 'rgba(255, 165, 0, 0.1)'); // Orange
+    gradient.addColorStop(0.33, 'rgba(255, 255, 0, 0.1)'); // Yellow
+    gradient.addColorStop(0.5, 'rgba(0, 255, 0, 0.1)');    // Green
+    gradient.addColorStop(0.67, 'rgba(0, 0, 255, 0.1)');   // Blue
+    gradient.addColorStop(0.83, 'rgba(75, 0, 130, 0.1)');  // Indigo
+    gradient.addColorStop(1, 'rgba(138, 43, 226, 0.1)');   // Violet
+    
+    // Fill canvas with gradient
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Create texture from canvas
+    const texture = PIXI.Texture.from(canvas);
+    
+    // Create sprite from texture
+    const sprite = new PIXI.Sprite(texture);
+    sprite.width = app.screen.width;
+    sprite.height = app.screen.height;
+    
+    backgroundGradient.addChild(sprite);
+    
+    return backgroundGradient;
+}
+
 // Initialize the Pixi Application
 async function init() {
     // Create the application with v7 API
@@ -448,6 +504,10 @@ async function init() {
     });
     
     document.body.appendChild(app.view);
+    
+    // Create and add rainbow background
+    const rainbow = createRainbowBackground();
+    app.stage.addChild(rainbow);
     
     // Load words from CSV
     await loadWords();
@@ -770,6 +830,7 @@ function createHighScoreInputScreen() {
     // Submit button
     const submitButton = createButton('Submit', app.screen.width / 2, app.screen.height / 2 + 120);
     submitButton.on('pointerdown', () => {
+        console.log('🖱️ Submit button clicked');
         submitHighScore();
     });
     highScoreInputScreen.addChild(submitButton);
@@ -971,6 +1032,14 @@ function createCelebration(newBestTime, message = 'NEW BEST TIME!') {
     celebrationContainer.visible = true;
     celebrationContainer.removeChildren(); // Clear any existing celebration
     
+    // Hide practice screen UI elements during celebration
+    if (wordText) wordText.visible = false;
+    if (progressBarBg) progressBarBg.visible = false;
+    if (progressBarFill) progressBarFill.visible = false;
+    if (progressText) progressText.visible = false;
+    if (backButton) backButton.visible = false;
+    if (nextButton) nextButton.visible = false;
+    
     // Create celebration text
     celebrationText = new PIXI.Text(`🎉 ${message} 🎉`, {
         fontFamily: 'Arial',
@@ -1105,6 +1174,14 @@ function hideCelebration() {
         celebrationContainer.removeChildren();
     }
     confettiParticles = [];
+    
+    // Restore practice screen UI elements
+    if (wordText) wordText.visible = true;
+    if (progressBarBg) progressBarBg.visible = true;
+    if (progressBarFill) progressBarFill.visible = true;
+    if (progressText) progressText.visible = true;
+    if (backButton) backButton.visible = true;
+    if (nextButton) nextButton.visible = true;
 }
 
 // Handle next button/arrow key
@@ -1220,6 +1297,8 @@ function handleKeyPress(event) {
         }
     } else if (currentScreen === 'highScoreInput') {
         if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent any default browser behavior
+            console.log('⌨️ Enter key pressed');
             submitHighScore();
         } else if (event.key === 'Backspace') {
             currentInitials = currentInitials.slice(0, -1);
@@ -1236,6 +1315,12 @@ function handleKeyPress(event) {
 // Handle window resize
 function handleResize() {
     if (!app) return;
+    
+    // Update background gradient size
+    if (backgroundGradient && backgroundGradient.children[0]) {
+        backgroundGradient.children[0].width = app.screen.width;
+        backgroundGradient.children[0].height = app.screen.height;
+    }
     
     // Update title screen positions
     if (titleScreen && titleScreen.children.length > 0) {
