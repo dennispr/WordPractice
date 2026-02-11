@@ -6,6 +6,7 @@ import {
     updateRacePositions, 
     handleRaceCompletion as handleRaceCompletionModule 
 } from './race.js';
+import { createButton } from './ui/Button.js';
 
 // System fonts array - at least 5 different fonts
 const GOOGLE_FONTS = [
@@ -869,50 +870,6 @@ function createHighScoreViewScreen() {
     highScoreViewScreen.addChild(backButton);
     
     app.stage.addChild(highScoreViewScreen);
-}
-
-// Helper function to create a button
-function createButton(text, x, y) {
-    const button = new PIXI.Container();
-    button.x = x;
-    button.y = y;
-    button.eventMode = 'static';
-    button.cursor = 'pointer';
-    
-    // Button background
-    const bg = new PIXI.Graphics();
-    bg.beginFill(0x4CAF50);
-    bg.drawRoundedRect(-100, -30, 200, 60, 10);
-    bg.endFill();
-    button.addChild(bg);
-    
-    // Button text
-    const buttonText = new PIXI.Text(text, {
-        fontFamily: 'Arial',
-        fontSize: 24,
-        fontWeight: 'bold',
-        fill: 0xffffff,
-        align: 'center'
-    });
-    buttonText.anchor.set(0.5);
-    button.addChild(buttonText);
-    
-    // Hover effects
-    button.on('pointerover', () => {
-        bg.clear();
-        bg.beginFill(0x45a049);
-        bg.drawRoundedRect(-100, -30, 200, 60, 10);
-        bg.endFill();
-    });
-    
-    button.on('pointerout', () => {
-        bg.clear();
-        bg.beginFill(0x4CAF50);
-        bg.drawRoundedRect(-100, -30, 200, 60, 10);
-        bg.endFill();
-    });
-    
-    return button;
 }
 
 // Shared function to create word display - used by both practice and race modes
