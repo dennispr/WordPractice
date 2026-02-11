@@ -7,6 +7,9 @@ import {
     handleRaceCompletion as handleRaceCompletionModule 
 } from './race.js';
 import { createButton } from './ui/Button.js';
+import { GameDataManager } from './data/GameDataManager.js';
+import { createTitleScreen, updateTitleScreenLayout } from './screens/TitleScreen.js';
+import { createEndScreen, updateEndScreenLayout } from './screens/EndScreen.js';
 
 // System fonts array - at least 5 different fonts
 const GOOGLE_FONTS = [
@@ -67,268 +70,6 @@ let confettiParticles = [];
 let celebrationActive = false;
 
 // Game Data Manager for localStorage
-class GameDataManager {
-    constructor(gameId, gameName, developer) {
-        this.gameId = gameId;
-        this.gameName = gameName;
-        this.developer = developer;
-        this.storageKey = 'gameAppData';
-    }
-
-    // Initialize or load existing data
-    initData() {
-        let data;
-        try {
-            const existing = localStorage.getItem(this.storageKey);
-            data = existing ? JSON.parse(existing) : null;
-        } catch (e) {
-            console.warn('Failed to parse saved data, creating new:', e);
-            data = null;
-        }
-        
-        if (!data) {
-            data = {
-                version: "1.0",
-                developer: this.developer || "Unknown Developer",
-                user: {
-                    userId: `user_${Date.now()}`,
-                    createdAt: new Date().toISOString(),
-                    preferences: {}
-                },
-                games: {},
-                achievements: []
-            };
-            localStorage.setItem(this.storageKey, JSON.stringify(data));
-        }
-        
-        // Ensure all required fields exist with defaults
-        if (!data.version) {
-            console.log('Save data: Missing version, applying default "1.0"');
-            data.version = "1.0";
-        }
-        if (!data.developer) {
-            console.log('Save data: Missing developer, applying default:', this.developer || "Unknown Developer");
-            data.developer = this.developer || "Unknown Developer";
-        }
-        if (!data.user) {
-            console.log('Save data: Missing user object, creating default');
-            data.user = {};
-        }
-        if (!data.user.userId) {
-            console.log('Save data: Missing user ID, generating new one');
-            data.user.userId = `user_${Date.now()}`;
-        }
-        if (!data.user.createdAt) {
-            console.log('Save data: Missing user creation date, applying current timestamp');
-            data.user.createdAt = new Date().toISOString();
-        }
-        if (!data.user.preferences) {
-            console.log('Save data: Missing user preferences, creating empty object');
-            data.user.preferences = {};
-        }
-        if (!data.games) {
-            console.log('Save data: Missing games object, creating empty object');
-            data.games = {};
-        }
-        if (!data.achievements) {
-            console.log('Save data: Missing achievements array, creating empty array');
-            data.achievements = [];
-        }
-        
-        return data;
-    }
-
-    // Save a new game session
-    saveSession(sessionData) {
-        const data = this.initData();
-        
-        // Ensure sessionData has defaults
-        const session = {};
-        
-        if (!sessionData.startTime) {
-            console.log('Session data: Missing start time, using current timestamp');
-            session.startTime = new Date().toISOString();
-        } else {
-            session.startTime = sessionData.startTime;
-        }
-        
-        if (sessionData.duration === undefined || sessionData.duration === null) {
-            console.log('Session data: Missing duration, defaulting to 0');
-            session.duration = 0;
-        } else {
-            session.duration = sessionData.duration;
-        }
-        
-        if (sessionData.completed === undefined || sessionData.completed === null) {
-            console.log('Session data: Missing completed status, defaulting to false');
-            session.completed = false;
-        } else {
-            session.completed = sessionData.completed;
-        }
-        
-        if (!sessionData.wordsCount) {
-            console.log('Session data: Missing word count, defaulting to 0');
-            session.wordsCount = 0;
-        } else {
-            session.wordsCount = sessionData.wordsCount;
-        }
-        
-        if (sessionData.shuffled === undefined || sessionData.shuffled === null) {
-            console.log('Session data: Missing shuffle status, defaulting to false');
-            session.shuffled = false;
-        } else {
-            session.shuffled = sessionData.shuffled;
-        }
-        
-        if (!sessionData.backButtonUses) {
-            console.log('Session data: Missing back button usage, defaulting to 0');
-            session.backButtonUses = 0;
-        } else {
-            session.backButtonUses = sessionData.backButtonUses;
-        }
-        
-        if (!data.games[this.gameId]) {
-            data.games[this.gameId] = {
-                gameInfo: {
-                    name: this.gameName || "Unknown Game",
-                    developer: this.developer || "Unknown Developer",
-                    version: "1.0",
-                    firstPlayed: new Date().toISOString(),
-                    totalSessions: 0
-                },
-                stats: {
-                    bestTime: null, // Start as null until first real completion
-                    averageTime: 0,
-                    totalCompletions: 0,
-                    totalWordsCompleted: 0
-                },
-                highScores: {
-                    topTen: [], // Array of {initials, time, date, wordsCount}
-                    historical: [] // All scores that were once in top 10
-                },
-                sessions: [],
-                settings: {}
-            };
-        }
-        
-        // Ensure highScores structure exists (for existing saves)
-        if (!data.games[this.gameId].highScores) {
-            console.log('High score data: Adding high scores structure to existing save');
-            data.games[this.gameId].highScores = {
-                topTen: [],
-                historical: []
-            };
-        }
-
-        // Add session with generated ID
-        const sessionWithId = {
-            sessionId: `session_${Date.now()}`,
-            endTime: new Date().toISOString(),
-            ...session
-        };
-
-        data.games[this.gameId].sessions.push(sessionWithId);
-        data.games[this.gameId].gameInfo.totalSessions++;
-        data.games[this.gameId].gameInfo.lastPlayed = sessionWithId.endTime;
-        
-        // Update stats only if completed with valid duration
-        if (session.completed && session.duration > 0) {
-            const stats = data.games[this.gameId].stats;
-            stats.totalCompletions++;
-            stats.totalWordsCompleted += session.wordsCount;
-            
-            // Only update bestTime if we have a valid time and it's better than current best
-            if (stats.bestTime === null || session.duration < stats.bestTime) {
-                stats.bestTime = session.duration;
-            }
-            
-            // Calculate average time from completed sessions only
-            const completedSessions = data.games[this.gameId].sessions.filter(s => s.completed && s.duration > 0);
-            if (completedSessions.length > 0) {
-                stats.averageTime = Math.round(completedSessions.reduce((sum, s) => sum + s.duration, 0) / completedSessions.length);
-            }
-        }
-
-        localStorage.setItem(this.storageKey, JSON.stringify(data));
-        console.log('Game session saved:', sessionWithId);
-    }
-
-    // Get game statistics
-    getStats() {
-        const data = this.initData();
-        const gameStats = data.games[this.gameId]?.stats || {};
-        
-        // Return stats with safe defaults
-        return {
-            bestTime: gameStats.bestTime || null,
-            averageTime: gameStats.averageTime || 0,
-            totalCompletions: gameStats.totalCompletions || 0,
-            totalWordsCompleted: gameStats.totalWordsCompleted || 0
-        };
-    }
-    
-    // Check if time qualifies for top 10
-    isTopTenScore(time) {
-        const data = this.initData();
-        const topTen = data.games[this.gameId]?.highScores?.topTen || [];
-        
-        // Always qualifies if less than 10 scores
-        if (topTen.length < 10) return true;
-        
-        // Check if better than worst score
-        const worstScore = topTen[topTen.length - 1];
-        return time < worstScore.time;
-    }
-    
-    // Add high score with initials
-    addHighScore(initials, time, wordsCount) {
-        const data = this.initData();
-        const scoreEntry = {
-            initials: initials.toUpperCase().substring(0, 3), // Max 3 characters
-            time: time,
-            date: new Date().toISOString(),
-            wordsCount: wordsCount,
-            timestamp: Date.now()
-        };
-        
-        const highScores = data.games[this.gameId].highScores;
-        
-        // Add to topTen
-        highScores.topTen.push(scoreEntry);
-        
-        // Sort by time (fastest first)
-        highScores.topTen.sort((a, b) => a.time - b.time);
-        
-        // If more than 10, move extras to historical
-        while (highScores.topTen.length > 10) {
-            const removedScore = highScores.topTen.pop();
-            // Only add to historical if not already there
-            const alreadyHistorical = highScores.historical.find(h => 
-                h.timestamp === removedScore.timestamp
-            );
-            if (!removedScore.wasInTopTen && !alreadyHistorical) {
-                removedScore.wasInTopTen = true;
-                removedScore.removedFromTopTen = new Date().toISOString();
-                highScores.historical.push(removedScore);
-            }
-        }
-        
-        localStorage.setItem(this.storageKey, JSON.stringify(data));
-        console.log('High score added:', scoreEntry);
-        
-        return highScores.topTen.findIndex(score => score.timestamp === scoreEntry.timestamp) + 1; // Return rank
-    }
-    
-    // Get high scores
-    getHighScores() {
-        const data = this.initData();
-        return {
-            topTen: data.games[this.gameId]?.highScores?.topTen || [],
-            historical: data.games[this.gameId]?.highScores?.historical || []
-        };
-    }
-}
-
 // Initialize game data manager
 const gameData = new GameDataManager('word-practice', 'Word Practice', 'Videogame Workshop LLC');
 
@@ -446,13 +187,10 @@ function updateHighScoreView() {
 
 // Reset all save data to defaults
 function resetSaveData() {
-    // Show confirmation in console
-    console.log('🔄 Resetting all save data...');
+    // Use GameDataManager's reset method
+    gameData.resetData();
     
-    // Remove all saved data
-    localStorage.removeItem('gameAppData');
-    
-    // Force re-initialization with defaults
+    // Force re-initialization to show the new data structure
     const newData = gameData.initData();
     
     console.log('✅ Save data reset complete. New data structure:', newData);
@@ -514,11 +252,11 @@ async function init() {
     await loadWords();
     
     // Create all screens
-    createTitleScreen();
+    createTitleScreenWrapper();
     createPracticeScreen();
     raceScreen = createRaceScreenModule(app, createWordDisplay, createNavigationButtons);
     app.stage.addChild(raceScreen);
-    createEndScreen();
+    createEndScreenWrapper();
     createOptionsScreen();
     createHighScoreInputScreen();
     createHighScoreViewScreen();
@@ -558,60 +296,32 @@ function shuffleWords() {
 }
 
 // Create Title Screen
-function createTitleScreen() {
-    titleScreen = new PIXI.Container();
-    
-    // Title text
-    const title = new PIXI.Text('Word Practice', {
-        fontFamily: 'Arial',
-        fontSize: 72,
-        fontWeight: 'bold',
-        fill: 0x333333,
-        align: 'center'
+function createTitleScreenWrapper() {
+    titleScreen = createTitleScreen(app, {
+        onStart: () => {
+            shuffleWords();
+            currentWordIndex = 0;
+            sessionStartTime = new Date().toISOString();
+            backButtonUses = 0;
+            showScreen('practice');
+            updateWord();
+        },
+        onRace: () => {
+            shuffleWords();
+            currentWordIndex = 0;
+            sessionStartTime = new Date().toISOString();
+            backButtonUses = 0;
+            initRaceMode(words, gameData);
+            showScreen('race');
+            updateWord();
+        },
+        onOptions: () => {
+            showScreen('options');
+        },
+        onHighScores: () => {
+            showScreen('highScoreView');
+        }
     });
-    title.anchor.set(0.5);
-    title.x = app.screen.width / 2;
-    title.y = app.screen.height / 3;
-    titleScreen.addChild(title);
-    
-    // Start button
-    const startButton = createButton('Start', app.screen.width / 2, app.screen.height / 2 + 20);
-    startButton.on('pointerdown', () => {
-        shuffleWords();
-        currentWordIndex = 0;
-        sessionStartTime = new Date().toISOString();
-        backButtonUses = 0;
-        showScreen('practice');
-        updateWord();
-    });
-    titleScreen.addChild(startButton);
-    
-    // Race button (race mode)
-    const raceButton = createButton('Race', app.screen.width / 2, app.screen.height / 2 + 100);
-    raceButton.on('pointerdown', () => {
-        shuffleWords();
-        currentWordIndex = 0;
-        sessionStartTime = new Date().toISOString();
-        backButtonUses = 0;
-        initRaceMode(words, gameData);
-        showScreen('race');
-        updateWord();
-    });
-    titleScreen.addChild(raceButton);
-    
-    // Options button
-    const optionsButton = createButton('Options', app.screen.width / 2, app.screen.height / 2 + 180);
-    optionsButton.on('pointerdown', () => {
-        showScreen('options');
-    });
-    titleScreen.addChild(optionsButton);
-    
-    // High Scores button
-    const highScoresButton = createButton('High Scores', app.screen.width / 2, app.screen.height / 2 + 260);
-    highScoresButton.on('pointerdown', () => {
-        showScreen('highScoreView');
-    });
-    titleScreen.addChild(highScoresButton);
     
     app.stage.addChild(titleScreen);
 }
@@ -665,42 +375,21 @@ function createPracticeScreen() {
 }
 
 // Create End Screen
-function createEndScreen() {
-    endScreen = new PIXI.Container();
-    
-    // Congratulations text
-    const congratsText = new PIXI.Text('Great job! The End.', {
-        fontFamily: 'Arial',
-        fontSize: 64,
-        fontWeight: 'bold',
-        fill: 0x00aa00,
-        align: 'center'
+function createEndScreenWrapper() {
+    endScreen = createEndScreen({
+        onReturnToTitle: () => {
+            currentWordIndex = 0;
+            showScreen('title');
+        },
+        onShuffleRestart: () => {
+            shuffleWords();
+            currentWordIndex = 0;
+            sessionStartTime = new Date().toISOString();
+            backButtonUses = 0;
+            showScreen('practice');
+            updateWord();
+        }
     });
-    congratsText.anchor.set(0.5);
-    congratsText.x = app.screen.width / 2;
-    congratsText.y = app.screen.height / 3;
-    endScreen.addChild(congratsText);
-    
-    // Return to title button
-    const returnButton = createButton('Return to Title', app.screen.width / 2, app.screen.height / 2 + 50);
-    returnButton.on('pointerdown', () => {
-        currentWordIndex = 0;
-        showScreen('title');
-    });
-    
-    // Shuffle again button
-    const shuffleAgainButton = createButton('Shuffle & Restart', app.screen.width / 2, app.screen.height / 2 + 120);
-    shuffleAgainButton.on('pointerdown', () => {
-        shuffleWords();
-        currentWordIndex = 0;
-        sessionStartTime = new Date().toISOString();
-        backButtonUses = 0;
-        showScreen('practice');
-        updateWord();
-    });
-    endScreen.addChild(returnButton);
-    endScreen.addChild(shuffleAgainButton);
-    
     app.stage.addChild(endScreen);
 }
 
@@ -1280,24 +969,7 @@ function handleResize() {
     }
     
     // Update title screen positions
-    if (titleScreen && titleScreen.children.length > 0) {
-        titleScreen.children[0].x = app.screen.width / 2; // title
-        titleScreen.children[0].y = app.screen.height / 3;
-        titleScreen.children[1].x = app.screen.width / 2; // start button
-        titleScreen.children[1].y = app.screen.height / 2 + 20;
-        if (titleScreen.children.length > 2) {
-            titleScreen.children[2].x = app.screen.width / 2; // shuffle button
-            titleScreen.children[2].y = app.screen.height / 2 + 100;
-        }
-        if (titleScreen.children.length > 3) {
-            titleScreen.children[3].x = app.screen.width / 2; // options button
-            titleScreen.children[3].y = app.screen.height / 2 + 180;
-        }
-        if (titleScreen.children.length > 4) {
-            titleScreen.children[4].x = app.screen.width / 2; // high scores button
-            titleScreen.children[4].y = app.screen.height / 2 + 260;
-        }
-    }
+    updateTitleScreenLayout(titleScreen, app);
     
     // Update options screen positions
     if (optionsScreen && optionsScreen.children.length > 0) {
@@ -1370,16 +1042,7 @@ function handleResize() {
     }
     
     // Update end screen positions
-    if (endScreen && endScreen.children.length > 0) {
-        endScreen.children[0].x = app.screen.width / 2; // congratulations text
-        endScreen.children[0].y = app.screen.height / 3;
-        endScreen.children[1].x = app.screen.width / 2; // return button
-        endScreen.children[1].y = app.screen.height / 2 + 50;
-        if (endScreen.children.length > 2) {
-            endScreen.children[2].x = app.screen.width / 2; // shuffle again button
-            endScreen.children[2].y = app.screen.height / 2 + 120;
-        }
-    }
+    updateEndScreenLayout(endScreen, app);
 }
 
 // Start the application
