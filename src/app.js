@@ -470,13 +470,13 @@ function createRainbowBackground() {
     
     // Create rainbow gradient
     const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, 'rgba(255, 0, 0, 0.1)');     // Red
-    gradient.addColorStop(0.17, 'rgba(255, 165, 0, 0.1)'); // Orange
-    gradient.addColorStop(0.33, 'rgba(255, 255, 0, 0.1)'); // Yellow
-    gradient.addColorStop(0.5, 'rgba(0, 255, 0, 0.1)');    // Green
-    gradient.addColorStop(0.67, 'rgba(0, 0, 255, 0.1)');   // Blue
-    gradient.addColorStop(0.83, 'rgba(75, 0, 130, 0.1)');  // Indigo
-    gradient.addColorStop(1, 'rgba(138, 43, 226, 0.1)');   // Violet
+    gradient.addColorStop(0, 'rgba(255, 0, 0, 0.25)');     // Red
+    gradient.addColorStop(0.17, 'rgba(255, 165, 0, 0.25)'); // Orange
+    gradient.addColorStop(0.33, 'rgba(255, 255, 0, 0.25)'); // Yellow
+    gradient.addColorStop(0.5, 'rgba(0, 255, 0, 0.25)');    // Green
+    gradient.addColorStop(0.67, 'rgba(0, 0, 255, 0.25)');   // Blue
+    gradient.addColorStop(0.83, 'rgba(75, 0, 130, 0.25)');  // Indigo
+    gradient.addColorStop(1, 'rgba(138, 43, 226, 0.25)');   // Violet
     
     // Fill canvas with gradient
     ctx.fillStyle = gradient;
