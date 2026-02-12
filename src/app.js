@@ -10,16 +10,8 @@ import { createButton } from './ui/Button.js';
 import { GameDataManager } from './data/GameDataManager.js';
 import { createTitleScreen, updateTitleScreenLayout } from './screens/TitleScreen.js';
 import { createEndScreen, updateEndScreenLayout } from './screens/EndScreen.js';
-
-// System fonts array - at least 5 different fonts
-const GOOGLE_FONTS = [
-    'Arial',
-    'Georgia',
-    'Times New Roman',
-    'Courier New',
-    'Verdana',
-    'Comic Sans MS'
-];
+import { FontManager } from './utils/FontManager.js';
+import { CelebrationSystem } from './utils/CelebrationSystem.js';
 
 // App state
 let app;
@@ -48,7 +40,6 @@ let pendingScore = null; // Store score waiting for initials input
 let wordText;
 let nextButton;
 let backButton;
-let currentFont;
 let progressBarBg;
 let progressBarFill;
 let progressText;
@@ -62,12 +53,7 @@ let canNavigate = true; // Navigation availability flag
 // Game session tracking
 let sessionStartTime = null;
 let backButtonUses = 0;
-
-// Celebration system
-let celebrationContainer;
-let celebrationText;
-let confettiParticles = [];
-let celebrationActive = false;
+let celebrationSystem;
 
 // Game Data Manager for localStorage
 // Initialize game data manager
@@ -98,29 +84,32 @@ function submitHighScore() {
     pendingScore = null;
     currentInitials = '';
     
-    // Show celebration if it was also a best time
-    if (wasNewBest) {
-        console.log('🎉 Showing celebration for new best time');
-        // Switch to practice screen for celebration
-        showScreen('practice');
+    // Show celebration for every top score (not just new bests)
+    console.log('🎉 Showing celebration for top score achievement');
+    // Switch to practice screen for celebration
+    showScreen('practice');
+    
+    // Use a longer delay to ensure screen transition is complete
+    setTimeout(() => {
+        console.log('🎊 Creating celebration...');
+        let celebrationMessage;
+        if (wordsCount === 1) {
+            celebrationMessage = 'FIRST COMPLETION!';
+        } else if (wasNewBest) {
+            celebrationMessage = 'NEW BEST TIME!';
+        } else {
+            celebrationMessage = 'TOP SCORE!';
+        }
         
-        // Use a longer delay to ensure screen transition is complete
-        setTimeout(() => {
-            console.log('🎊 Creating celebration...');
-            const celebrationMessage = wordsCount === 1 ? 'FIRST COMPLETION!' : 'NEW BEST TIME!';
-            createCelebration(scoreTime, celebrationMessage);
-            
-            // Go to end screen after celebration
-            setTimeout(() => {
-                console.log('✅ Going to end screen after celebration');
-                showScreen('end');
-            }, 4500);
-        }, 200);
-    } else {
-        console.log('➡️ Going directly to end screen (not a new best)');
-        // Go directly to end screen
-        showScreen('end');
-    }
+        celebrationSystem.createCelebration(scoreTime, celebrationMessage, {
+            onComplete: () => {
+                console.log('✅ Going to high score screen after celebration');
+                const newScoreInfo = { time: scoreTime, initials: initials, wordsCount: wordsCount };
+                updateHighScoreView(newScoreInfo); // Refresh high score display with new score info
+                showScreen('highScoreView'); // Show high scores instead of going to end screen
+            }
+        });
+    }, 200);
 }
 
 // Update high score input display
@@ -133,7 +122,7 @@ function updateHighScoreInput() {
 }
 
 // Update high score view with current scores
-function updateHighScoreView() {
+function updateHighScoreView(newScore = null) {
     if (!highScoreViewScreen) return;
     
     const scoresContainer = highScoreViewScreen.children[1]; // Second child is scores container
@@ -141,7 +130,7 @@ function updateHighScoreView() {
     
     const scores = gameData.getHighScores();
     
-    if (scores.topTen.length === 0) {
+    if (scores.topTen.length === 0 && !newScore) {
         const noScoresText = new PIXI.Text('No high scores yet!\n\nComplete the word practice to set your first score.', {
             fontFamily: 'Arial',
             fontSize: 24,
@@ -153,17 +142,21 @@ function updateHighScoreView() {
         return;
     }
     
+    // Display top ten scores
     scores.topTen.forEach((score, index) => {
         const rankText = `${index + 1}.`;
         const timeText = `${score.time}s`;
         const initialsText = score.initials;
         const wordsText = `${score.wordsCount} words`;
         
+        // Check if this is the newly added score (bold it)
+        const isNewScore = newScore && score.time === newScore.time && score.initials === newScore.initials;
+        
         const scoreText = new PIXI.Text(`${rankText.padEnd(4)} ${initialsText.padEnd(4)} ${timeText.padEnd(8)} ${wordsText}`, {
             fontFamily: 'Courier New',
             fontSize: index === 0 ? 20 : 18,
-            fontWeight: index === 0 ? 'bold' : 'normal',
-            fill: index === 0 ? 0xFFD700 : 0x333333,
+            fontWeight: (index === 0 || isNewScore) ? 'bold' : 'normal',
+            fill: index === 0 ? 0xFFD700 : (isNewScore ? 0x00AA00 : 0x333333),
             align: 'left'
         });
         scoreText.anchor.set(0.5, 0);
@@ -171,7 +164,46 @@ function updateHighScoreView() {
         scoresContainer.addChild(scoreText);
     });
     
+    // Show current score if it didn't make top ten
+    if (newScore && !gameData.isTopTenScore(newScore.time)) {
+        // Add separator
+        const separatorText = new PIXI.Text('─────────────────────', {
+            fontFamily: 'Courier New',
+            fontSize: 16,
+            fill: 0x999999,
+            align: 'center'
+        });
+        separatorText.anchor.set(0.5, 0);
+        separatorText.y = scores.topTen.length * 30 + 15;
+        scoresContainer.addChild(separatorText);
+        
+        // Add current score label
+        const currentScoreLabel = new PIXI.Text('CURRENT SCORE', {
+            fontFamily: 'Arial',
+            fontSize: 16,
+            fontWeight: 'bold',
+            fill: 0x666666,
+            align: 'center'
+        });
+        currentScoreLabel.anchor.set(0.5, 0);
+        currentScoreLabel.y = scores.topTen.length * 30 + 35;
+        scoresContainer.addChild(currentScoreLabel);
+        
+        // Add current score
+        const currentScoreText = new PIXI.Text(`${newScore.initials.padEnd(4)} ${newScore.time}s`.padEnd(12) + ` ${newScore.wordsCount} words`, {
+            fontFamily: 'Courier New',
+            fontSize: 18,
+            fontWeight: 'bold',
+            fill: 0x0066CC,
+            align: 'center'
+        });
+        currentScoreText.anchor.set(0.5, 0);
+        currentScoreText.y = scores.topTen.length * 30 + 55;
+        scoresContainer.addChild(currentScoreText);
+    }
+    
     // Show total historical scores if any
+    const historicalOffset = newScore && !gameData.isTopTenScore(newScore.time) ? 100 : 20;
     if (scores.historical.length > 0) {
         const historicalText = new PIXI.Text(`\n${scores.historical.length} historical scores tracked`, {
             fontFamily: 'Arial',
@@ -180,7 +212,7 @@ function updateHighScoreView() {
             align: 'center'
         });
         historicalText.anchor.set(0.5, 0);
-        historicalText.y = scores.topTen.length * 30 + 20;
+        historicalText.y = scores.topTen.length * 30 + historicalOffset;
         scoresContainer.addChild(historicalText);
     }
 }
@@ -254,8 +286,9 @@ async function init() {
     // Create all screens
     createTitleScreenWrapper();
     createPracticeScreen();
-    raceScreen = createRaceScreenModule(app, createWordDisplay, createNavigationButtons);
+    raceScreen = createRaceScreenModule(app, (parentContainer) => FontManager.createWordDisplay(parentContainer, app), createNavigationButtons);
     app.stage.addChild(raceScreen);
+    raceScreen.visible = false;
     createEndScreenWrapper();
     createOptionsScreen();
     createHighScoreInputScreen();
@@ -331,7 +364,7 @@ function createPracticeScreen() {
     practiceScreen = new PIXI.Container();
     
     // Create shared word display
-    wordText = createWordDisplay(practiceScreen);
+    wordText = FontManager.createWordDisplay(practiceScreen, app);
     
     // Progress bar background
     progressBarBg = new PIXI.Graphics();
@@ -361,17 +394,34 @@ function createPracticeScreen() {
     progressText.y = app.screen.height - 20;
     practiceScreen.addChild(progressText);
     
-    // Celebration container (hidden by default)
-    celebrationContainer = new PIXI.Container();
-    celebrationContainer.visible = false;
-    practiceScreen.addChild(celebrationContainer);
+    // Initialize celebration system
+    celebrationSystem = new CelebrationSystem(app, practiceScreen);
+    celebrationSystem.setUIElements({
+        wordText,
+        progressBarBg,
+        progressBarFill,
+        progressText,
+        backButton,
+        nextButton
+    });
     
     // Create shared navigation buttons
     const buttons = createNavigationButtons(practiceScreen);
     backButton = buttons.back;
     nextButton = buttons.next;
     
+    // Update celebration system UI references after buttons are created
+    celebrationSystem.setUIElements({
+        wordText,
+        progressBarBg,
+        progressBarFill,
+        progressText,
+        backButton: buttons.back,
+        nextButton: buttons.next
+    });
+    
     app.stage.addChild(practiceScreen);
+    practiceScreen.visible = false;
 }
 
 // Create End Screen
@@ -391,6 +441,7 @@ function createEndScreenWrapper() {
         }
     });
     app.stage.addChild(endScreen);
+    endScreen.visible = false;
 }
 
 // Create Options Screen
@@ -439,16 +490,16 @@ function createOptionsScreen() {
         // Trigger celebration after a brief delay
         setTimeout(() => {
             const testTime = Math.floor(Math.random() * 60) + 30; // Random time between 30-90 seconds
-            const messages = ['NEW BEST TIME!', 'FIRST COMPLETION!'];
+            const messages = ['NEW BEST TIME!', 'FIRST COMPLETION!', 'TOP SCORE!'];
             const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-            createCelebration(testTime, randomMessage);
-            
-            // Restore original data after celebration
-            setTimeout(() => {
-                words = originalWords;
-                currentWordIndex = originalIndex;
-                console.log('Test celebration complete. Original data restored.');
-            }, 5000); // Restore after 5 seconds (after celebration ends)
+            celebrationSystem.createCelebration(testTime, randomMessage, {
+                onComplete: () => {
+                    // Restore original data after celebration
+                    words = originalWords;
+                    currentWordIndex = originalIndex;
+                    console.log('Test celebration complete. Original data restored.');
+                }
+            });
         }, 100);
     });
     optionsScreen.addChild(testCelebrationButton);
@@ -461,6 +512,7 @@ function createOptionsScreen() {
     optionsScreen.addChild(backToTitleButton);
     
     app.stage.addChild(optionsScreen);
+    optionsScreen.visible = false;
 }
 
 // Create High Score Input Screen
@@ -526,6 +578,7 @@ function createHighScoreInputScreen() {
     highScoreInputScreen.addChild(submitButton);
     
     app.stage.addChild(highScoreInputScreen);
+    highScoreInputScreen.visible = false;
 }
 
 // Create High Score View Screen
@@ -559,26 +612,10 @@ function createHighScoreViewScreen() {
     highScoreViewScreen.addChild(backButton);
     
     app.stage.addChild(highScoreViewScreen);
+    highScoreViewScreen.visible = false;
 }
 
 // Shared function to create word display - used by both practice and race modes
-function createWordDisplay(parentContainer) {
-    // Word text (will be updated dynamically)
-    const wordDisplay = new PIXI.Text('', {
-        fontFamily: 'Arial',
-        fontSize: 64,
-        fontWeight: 'bold',
-        fill: 0x000000,
-        align: 'center'
-    });
-    wordDisplay.anchor.set(0.5);
-    wordDisplay.x = app.screen.width / 2;
-    wordDisplay.y = app.screen.height / 2;
-    parentContainer.addChild(wordDisplay);
-    
-    return wordDisplay;
-}
-
 // Shared function to create navigation buttons - used by both practice and race modes
 function createNavigationButtons(parentContainer) {
     // Back button
@@ -595,19 +632,6 @@ function createNavigationButtons(parentContainer) {
 }
 
 // Shared function to update word display with font randomization - used by both modes
-function updateWordDisplay(wordDisplayElement) {
-    if (currentWordIndex >= 0 && currentWordIndex < words.length) {
-        const word = words[currentWordIndex];
-        const randomFont = GOOGLE_FONTS[Math.floor(Math.random() * GOOGLE_FONTS.length)];
-        
-        wordDisplayElement.text = word;
-        wordDisplayElement.style.fontFamily = randomFont;
-        currentFont = randomFont;
-        
-        console.log(`Word ${currentWordIndex + 1}/${words.length}: "${word}" in ${randomFont}`);
-    }
-}
-
 // Show a specific screen
 function showScreen(screen) {
     currentScreen = screen;
@@ -642,8 +666,8 @@ function showScreen(screen) {
 
 // Update the displayed word with a random font
 function updateWord() {
-    // Update the word display using shared function
-    updateWordDisplay(wordText);
+    // Update the word display using FontManager
+    FontManager.updateWordDisplay(wordText, words[currentWordIndex], currentWordIndex, words.length);
     
     // Update progress bar only in practice mode
     if (currentScreen === 'practice') {
@@ -673,163 +697,6 @@ function updateProgressBar() {
 }
 
 // Create celebration effect for new best time
-function createCelebration(newBestTime, message = 'NEW BEST TIME!') {
-    celebrationActive = true;
-    celebrationContainer.visible = true;
-    celebrationContainer.removeChildren(); // Clear any existing celebration
-    
-    // Hide practice screen UI elements during celebration
-    if (wordText) wordText.visible = false;
-    if (progressBarBg) progressBarBg.visible = false;
-    if (progressBarFill) progressBarFill.visible = false;
-    if (progressText) progressText.visible = false;
-    if (backButton) backButton.visible = false;
-    if (nextButton) nextButton.visible = false;
-    
-    // Create celebration text
-    celebrationText = new PIXI.Text(`🎉 ${message} 🎉`, {
-        fontFamily: 'Arial',
-        fontSize: 48,
-        fontWeight: 'bold',
-        fill: 0xFFD700, // Gold
-        align: 'center',
-        stroke: 0x000000,
-        strokeThickness: 3
-    });
-    celebrationText.anchor.set(0.5);
-    celebrationText.x = app.screen.width / 2;
-    celebrationText.y = app.screen.height / 2 - 100;
-    celebrationContainer.addChild(celebrationText);
-    
-    // Create time display
-    const timeText = new PIXI.Text(`${newBestTime} seconds!`, {
-        fontFamily: 'Arial',
-        fontSize: 32,
-        fontWeight: 'bold',
-        fill: 0xFFD700,
-        align: 'center'
-    });
-    timeText.anchor.set(0.5);
-    timeText.x = app.screen.width / 2;
-    timeText.y = app.screen.height / 2 - 50;
-    celebrationContainer.addChild(timeText);
-    
-    // Create confetti particles
-    createConfetti();
-    
-    // Animate celebration text
-    animateCelebrationText();
-    
-    // Auto-hide after 4 seconds
-    setTimeout(() => {
-        hideCelebration();
-    }, 4000);
-}
-
-// Create confetti particles
-function createConfetti() {
-    confettiParticles = [];
-    const colors = [0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xFFA726, 0x66BB6A, 0xAB47BC];
-    
-    for (let i = 0; i < 50; i++) {
-        const particle = new PIXI.Graphics();
-        const color = colors[Math.floor(Math.random() * colors.length)];
-        const size = Math.random() * 8 + 4;
-        
-        // Random shape - rectangle or circle
-        if (Math.random() > 0.5) {
-            particle.beginFill(color);
-            particle.drawRect(0, 0, size, size);
-            particle.endFill();
-        } else {
-            particle.beginFill(color);
-            particle.drawCircle(0, 0, size / 2);
-            particle.endFill();
-        }
-        
-        // Random starting position across top of screen
-        particle.x = Math.random() * app.screen.width;
-        particle.y = -20;
-        
-        // Random physics properties
-        particle.vx = (Math.random() - 0.5) * 4; // horizontal velocity
-        particle.vy = Math.random() * 3 + 2; // falling velocity
-        particle.rotation = Math.random() * Math.PI * 2;
-        particle.rotationSpeed = (Math.random() - 0.5) * 0.2;
-        particle.gravity = 0.1;
-        
-        confettiParticles.push(particle);
-        celebrationContainer.addChild(particle);
-    }
-    
-    // Start confetti animation
-    animateConfetti();
-}
-
-// Animate confetti particles
-function animateConfetti() {
-    if (!celebrationActive) return;
-    
-    confettiParticles.forEach((particle, index) => {
-        // Update position
-        particle.x += particle.vx;
-        particle.y += particle.vy;
-        particle.vy += particle.gravity;
-        particle.rotation += particle.rotationSpeed;
-        
-        // Remove particles that fall off screen
-        if (particle.y > app.screen.height + 50) {
-            celebrationContainer.removeChild(particle);
-            confettiParticles.splice(index, 1);
-        }
-    });
-    
-    // Continue animation
-    if (confettiParticles.length > 0) {
-        requestAnimationFrame(animateConfetti);
-    }
-}
-
-// Animate celebration text (bouncing effect)
-function animateCelebrationText() {
-    if (!celebrationActive || !celebrationText) return;
-    
-    let bouncePhase = 0;
-    const originalY = celebrationText.y;
-    
-    function bounce() {
-        if (!celebrationActive || !celebrationText) return;
-        
-        bouncePhase += 0.1;
-        celebrationText.y = originalY + Math.sin(bouncePhase) * 10;
-        celebrationText.scale.set(1 + Math.sin(bouncePhase * 2) * 0.1);
-        
-        if (bouncePhase < Math.PI * 8) { // Bounce for ~4 seconds
-            requestAnimationFrame(bounce);
-        }
-    }
-    
-    bounce();
-}
-
-// Hide celebration
-function hideCelebration() {
-    celebrationActive = false;
-    if (celebrationContainer) {
-        celebrationContainer.visible = false;
-        celebrationContainer.removeChildren();
-    }
-    confettiParticles = [];
-    
-    // Restore practice screen UI elements
-    if (wordText) wordText.visible = true;
-    if (progressBarBg) progressBarBg.visible = true;
-    if (progressBarFill) progressBarFill.visible = true;
-    if (progressText) progressText.visible = true;
-    if (backButton) backButton.visible = true;
-    if (nextButton) nextButton.visible = true;
-}
-
 // Handle next button/arrow key
 function handleNext() {
     const currentTime = Date.now();
@@ -909,10 +776,20 @@ function handlePracticeCompletion() {
     // Show celebration for first completion or new best time (if not high score)
     if (isNewBest) {
         const celebrationMessage = isFirstCompletion ? 'FIRST COMPLETION!' : 'NEW BEST TIME!';
-        createCelebration(duration, celebrationMessage);
+        celebrationSystem.createCelebration(duration, celebrationMessage, {
+            onComplete: () => {
+                // Show high score screen with current score if it's a new best
+                const currentScoreInfo = { time: duration, initials: 'YOU', wordsCount: words.length };
+                updateHighScoreView(currentScoreInfo);
+                showScreen('highScoreView');
+            }
+        });
+    } else {
+        // Even if it's not a new best, show their score
+        const currentScoreInfo = { time: duration, initials: 'YOU', wordsCount: words.length };
+        updateHighScoreView(currentScoreInfo);
+        showScreen('highScoreView');
     }
-    
-    showScreen('end');
 }
 
 // Handle back button/arrow key
