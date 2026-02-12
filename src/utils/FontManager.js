@@ -56,6 +56,26 @@ export class FontManager {
     }
 
     /**
+     * Processes a word for display, applying special replacements like emojis
+     * @param {string} word - The word to process
+     * @returns {string} The processed word with any special replacements
+     */
+    static processWordForDisplay(word) {
+        if (!word) return word;
+        
+        // Convert to lowercase for comparison but preserve original case for other words
+        const lowerWord = word.toLowerCase();
+        
+        // Special emoji replacements
+        switch (lowerWord) {
+            case 'look':
+                return 'l👀k';
+            default:
+                return word;
+        }
+    }
+
+    /**
      * Creates a word display PIXI text element with default styling
      * @param {PIXI.Container} parentContainer - Container to add the text element to
      * @param {Object} app - PIXI application instance for screen dimensions
@@ -112,8 +132,9 @@ export class FontManager {
             logToConsole = true
         } = options;
 
-        // Set the word text
-        wordDisplayElement.text = word;
+        // Set the word text with special emoji replacements
+        const displayWord = this.processWordForDisplay(word);
+        wordDisplayElement.text = displayWord;
 
         // Handle font selection
         let selectedFont;
