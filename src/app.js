@@ -14,6 +14,7 @@ import { FontManager } from './utils/FontManager.js';
 import { CelebrationSystem } from './utils/CelebrationSystem.js';
 import { layoutManager } from './utils/LayoutManager.js';
 import { ButtonParticles } from './effects/ButtonParticles.js';
+import { screenManager } from './core/ScreenManager.js';
 
 // App state
 let app;
@@ -277,11 +278,14 @@ async function init() {
     // Get initial screen dimensions
     const screenDimensions = layoutManager.getScreenDimensions();
     
-    // Create the application with fixed size (we'll handle scaling ourselves)
+    // Create the application with proper resolution for sharp text
+    const devicePixelRatio = window.devicePixelRatio || 1;
     app = new PIXI.Application({
         width: screenDimensions.width,
         height: screenDimensions.height,
-        backgroundColor: 0xffffff
+        backgroundColor: 0xffffff,
+        resolution: devicePixelRatio,
+        autoDensity: true
     });
     
     document.body.appendChild(app.view);
@@ -296,12 +300,12 @@ async function init() {
     // Load words from CSV
     await loadWords();
     
-    // Create all screens
+    // Create all screens and register with ScreenManager
     createTitleScreenWrapper();
     createPracticeScreen();
     raceScreen = createRaceScreenModule(app, (parentContainer) => FontManager.createWordDisplay(parentContainer, app), createNavigationButtons);
     app.stage.addChild(raceScreen);
-    raceScreen.visible = false;
+    screenManager.addScreen('race', raceScreen);
     createEndScreenWrapper();
     createOptionsScreen();
     createHighScoreInputScreen();
@@ -374,6 +378,7 @@ function createTitleScreenWrapper() {
     });
     
     app.stage.addChild(titleScreen);
+    screenManager.addScreen('title', titleScreen);
 }
 
 // Create Practice Screen
@@ -444,7 +449,7 @@ function createPracticeScreen() {
     });
     
     app.stage.addChild(practiceScreen);
-    practiceScreen.visible = false;
+    screenManager.addScreen('practice', practiceScreen);
 }
 
 // Create End Screen
@@ -464,7 +469,7 @@ function createEndScreenWrapper() {
         }
     });
     app.stage.addChild(endScreen);
-    endScreen.visible = false;
+    screenManager.addScreen('end', endScreen);
 }
 
 // Create Options Screen
@@ -535,7 +540,7 @@ function createOptionsScreen() {
     optionsScreen.addChild(backToTitleButton);
     
     app.stage.addChild(optionsScreen);
-    optionsScreen.visible = false;
+    screenManager.addScreen('options', optionsScreen);
 }
 
 // Create High Score Input Screen
@@ -601,7 +606,7 @@ function createHighScoreInputScreen() {
     highScoreInputScreen.addChild(submitButton);
     
     app.stage.addChild(highScoreInputScreen);
-    highScoreInputScreen.visible = false;
+    screenManager.addScreen('highScoreInput', highScoreInputScreen);
 }
 
 // Create High Score View Screen
@@ -635,7 +640,7 @@ function createHighScoreViewScreen() {
     highScoreViewScreen.addChild(backButton);
     
     app.stage.addChild(highScoreViewScreen);
-    highScoreViewScreen.visible = false;
+    screenManager.addScreen('highScoreView', highScoreViewScreen);
 }
 
 // Shared function to create word display - used by both practice and race modes
@@ -657,16 +662,13 @@ function createNavigationButtons(parentContainer) {
     return { back: backBtn, next: nextBtn };
 }
 
-// Shared function to update word display with font randomization - used by both modes
-// Show a specific screen
+// Show a specific screen using ScreenManager
 function showScreen(screen) {
+    // Update current screen state
     currentScreen = screen;
     
-    titleScreen.visible = (screen === 'title');
-    practiceScreen.visible = (screen === 'practice');
-    raceScreen.visible = (screen === 'race');
-    endScreen.visible = (screen === 'end');
-    optionsScreen.visible = (screen === 'options');
+    // Use ScreenManager to handle visibility
+    screenManager.showScreen(screen);
     
     // Set the correct wordText reference for the active screen
     if (screen === 'race') {
@@ -676,17 +678,12 @@ function showScreen(screen) {
         // No need to change it since it was created directly in createPracticeScreen
     }
     
-    if (highScoreInputScreen) {
-        highScoreInputScreen.visible = (screen === 'highScoreInput');
-        if (screen === 'highScoreInput') {
-            updateHighScoreInput();
-        }
+    // Handle screen-specific activation logic
+    if (screen === 'highScoreInput' && highScoreInputScreen) {
+        updateHighScoreInput();
     }
-    if (highScoreViewScreen) {
-        highScoreViewScreen.visible = (screen === 'highScoreView');
-        if (screen === 'highScoreView') {
-            updateHighScoreView();
-        }
+    if (screen === 'highScoreView' && highScoreViewScreen) {
+        updateHighScoreView();
     }
 }
 
@@ -877,8 +874,11 @@ function handleResize() {
     // Get new screen dimensions
     const screenDimensions = layoutManager.getScreenDimensions();
     
-    // Resize PIXI app
+    // Resize PIXI app while maintaining resolution for sharp text
+    const devicePixelRatio = window.devicePixelRatio || 1;
     app.renderer.resize(screenDimensions.width, screenDimensions.height);
+    // Ensure resolution is maintained after resize
+    app.renderer.resolution = devicePixelRatio;
     
     // Recreate background to fill new screen
     if (backgroundGradient) {

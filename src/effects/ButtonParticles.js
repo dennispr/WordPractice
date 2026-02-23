@@ -11,7 +11,7 @@ export class ButtonParticles {
         this.container = container;
         this.particleContainer = new PIXI.Container();
         this.particles = [];
-        this.container.addChild(this.particleContainer);
+        // Don't add particle container yet - will be added when particles are created
         
         // Emoji options for particles
         this.celebrationEmojis = ['⭐', '🌟', '✨', '🦄', '💫', '🎉'];
@@ -27,6 +27,15 @@ export class ButtonParticles {
         const particleCount = options.count || 12;
         const duration = options.duration || 1500;
         const spreadRange = options.spreadRange || layoutManager.scale(150);
+        
+        // Ensure particle container is on top of other elements
+        if (this.particleContainer.parent !== this.container) {
+            this.container.addChild(this.particleContainer);
+        } else {
+            // Move to top by removing and re-adding
+            this.container.removeChild(this.particleContainer);
+            this.container.addChild(this.particleContainer);
+        }
         
         // Create particles
         for (let i = 0; i < particleCount; i++) {

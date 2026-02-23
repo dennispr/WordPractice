@@ -123,10 +123,20 @@ export class LayoutManager {
      * @returns {number} Optimized font size
      */
     scaleFontSize(baseFontSize) {
-        // Scale font size and round to avoid sub-pixel rendering issues
+        // Get device pixel ratio for better text rendering on high-DPI displays
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        
+        // Scale font size and account for device pixel ratio
         const scaledSize = baseFontSize * this.currentScale;
-        // Round to nearest even number for better rendering
-        return Math.round(scaledSize / 2) * 2;
+        
+        // For high-DPI displays, we can use more precise font sizes
+        if (devicePixelRatio > 1) {
+            // Round to nearest 0.5 for high-DPI displays for better precision
+            return Math.round(scaledSize * 2) / 2;
+        } else {
+            // Round to nearest even number for standard displays
+            return Math.round(scaledSize / 2) * 2;
+        }
     }
     
     /**
