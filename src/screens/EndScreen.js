@@ -1,6 +1,7 @@
 // EndScreen module - Game completion screen
 import * as PIXI from 'pixi.js';
 import { createButton } from '../ui/Button.js';
+import { layoutManager } from '../utils/LayoutManager.js';
 
 /**
  * Creates the end screen with congratulations message and navigation options
@@ -12,21 +13,25 @@ import { createButton } from '../ui/Button.js';
 export function createEndScreen(callbacks = {}) {
     const endScreen = new PIXI.Container();
     
+    // Get end screen layout
+    const endLayout = layoutManager.layout.endScreen;
+    const gameArea = layoutManager.getGameArea();
+    
     // Congratulations text
     const congratsText = new PIXI.Text('Great job! The End.', {
         fontFamily: 'Arial',
-        fontSize: 64,
+        fontSize: layoutManager.scaleFontSize(128),  // Doubled from 64
         fontWeight: 'bold',
         fill: 0x00aa00,
         align: 'center'
     });
     congratsText.anchor.set(0.5);
-    congratsText.x = window.innerWidth / 2;
-    congratsText.y = window.innerHeight / 3;
+    congratsText.x = layoutManager.centerX();
+    congratsText.y = gameArea.y + (gameArea.height * endLayout.titleY);
     endScreen.addChild(congratsText);
     
     // Return to title button
-    const returnButton = createButton('Return to Title', window.innerWidth / 2, window.innerHeight / 2 + 50);
+    const returnButton = createButton('Return to Title', layoutManager.centerX(), gameArea.y + (gameArea.height * endLayout.buttonY));
     returnButton.on('pointerdown', () => {
         if (callbacks.onReturnToTitle) {
             callbacks.onReturnToTitle();
@@ -34,7 +39,7 @@ export function createEndScreen(callbacks = {}) {
     });
     
     // Shuffle again button
-    const shuffleAgainButton = createButton('Shuffle & Restart', window.innerWidth / 2, window.innerHeight / 2 + 120);
+    const shuffleAgainButton = createButton('Shuffle & Restart', layoutManager.centerX(), gameArea.y + (gameArea.height * endLayout.buttonY) + layoutManager.scale(80));
     shuffleAgainButton.on('pointerdown', () => {
         if (callbacks.onShuffleRestart) {
             callbacks.onShuffleRestart();
@@ -57,21 +62,26 @@ export function updateEndScreenLayout(endScreen, app) {
         return;
     }
     
-    // Update congratulations text position
+    // Get updated end screen layout
+    const endLayout = layoutManager.layout.endScreen;
+    const gameArea = layoutManager.getGameArea();
+    
+    // Update congratulations text position and size
     if (endScreen.children[0]) {
-        endScreen.children[0].x = app.screen.width / 2;
-        endScreen.children[0].y = app.screen.height / 3;
+        endScreen.children[0].x = layoutManager.centerX();
+        endScreen.children[0].y = gameArea.y + (gameArea.height * endLayout.titleY);
+        endScreen.children[0].style.fontSize = layoutManager.scaleFontSize(128);
     }
     
     // Update return to title button position
     if (endScreen.children[1]) {
-        endScreen.children[1].x = app.screen.width / 2;
-        endScreen.children[1].y = app.screen.height / 2 + 50;
+        endScreen.children[1].x = layoutManager.centerX();
+        endScreen.children[1].y = gameArea.y + (gameArea.height * endLayout.buttonY);
     }
     
     // Update shuffle again button position
     if (endScreen.children[2]) {
-        endScreen.children[2].x = app.screen.width / 2;
-        endScreen.children[2].y = app.screen.height / 2 + 120;
+        endScreen.children[2].x = layoutManager.centerX();
+        endScreen.children[2].y = gameArea.y + (gameArea.height * endLayout.buttonY) + layoutManager.scale(80);
     }
 }

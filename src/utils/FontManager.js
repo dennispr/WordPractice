@@ -1,5 +1,6 @@
 // FontManager module - Manages font selection and word display functionality
 import * as PIXI from 'pixi.js';
+import { layoutManager } from './LayoutManager.js';
 
 /**
  * Font management class for handling font selection and word display
@@ -88,9 +89,12 @@ export class FontManager {
      * @returns {PIXI.Text} The created word display text element
      */
     static createWordDisplay(parentContainer, app, options = {}) {
+        // Get layout from layout manager
+        const wordLayout = layoutManager.getWordDisplay();
+        
         const textStyle = {
             fontFamily: options.fontFamily || 'Arial',
-            fontSize: options.fontSize || 64,
+            fontSize: options.fontSize || wordLayout.fontSize,
             fontWeight: options.fontWeight || 'bold',
             fill: options.fill !== undefined ? options.fill : 0x000000,
             align: options.align || 'center',
@@ -99,8 +103,8 @@ export class FontManager {
 
         const wordDisplay = new PIXI.Text('', textStyle);
         wordDisplay.anchor.set(0.5);
-        wordDisplay.x = app.screen.width / 2;
-        wordDisplay.y = app.screen.height / 2;
+        wordDisplay.x = wordLayout.x;
+        wordDisplay.y = wordLayout.y;
         
         if (parentContainer) {
             parentContainer.addChild(wordDisplay);

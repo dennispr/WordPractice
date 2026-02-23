@@ -12,6 +12,8 @@ import { createTitleScreen, updateTitleScreenLayout } from './screens/TitleScree
 import { createEndScreen, updateEndScreenLayout } from './screens/EndScreen.js';
 import { FontManager } from './utils/FontManager.js';
 import { CelebrationSystem } from './utils/CelebrationSystem.js';
+import { layoutManager } from './utils/LayoutManager.js';
+import { ButtonParticles } from './effects/ButtonParticles.js';
 
 // App state
 let app;
@@ -54,6 +56,7 @@ let canNavigate = true; // Navigation availability flag
 let sessionStartTime = null;
 let backButtonUses = 0;
 let celebrationSystem;
+let buttonParticles;
 
 // Game Data Manager for localStorage
 // Initialize game data manager
@@ -165,7 +168,7 @@ function updateHighScoreView(newScore = null) {
     });
     
     // Show current score if it didn't make top ten
-    if (newScore && !gameData.isTopTenScore(newScore.time)) {
+    if (newScore && !gameData.isTopTenScore(newScore.time, newScore.wordsCount)) {
         // Add separator
         const separatorText = new PIXI.Text('─────────────────────', {
             fontFamily: 'Courier New',
@@ -203,7 +206,7 @@ function updateHighScoreView(newScore = null) {
     }
     
     // Show total historical scores if any
-    const historicalOffset = newScore && !gameData.isTopTenScore(newScore.time) ? 100 : 20;
+    const historicalOffset = newScore && !gameData.isTopTenScore(newScore.time, newScore.wordsCount) ? 100 : 20;
     if (scores.historical.length > 0) {
         const historicalText = new PIXI.Text(`\n${scores.historical.length} historical scores tracked`, {
             fontFamily: 'Arial',
@@ -233,10 +236,13 @@ function resetSaveData() {
 function createRainbowBackground() {
     backgroundGradient = new PIXI.Graphics();
     
+    // Get full screen dimensions for background
+    const screenDimensions = layoutManager.getScreenDimensions();
+    
     // Create canvas for gradient
     const canvas = document.createElement('canvas');
-    canvas.width = app.screen.width || 800;
-    canvas.height = app.screen.height || 600;
+    canvas.width = screenDimensions.width;
+    canvas.height = screenDimensions.height;
     const ctx = canvas.getContext('2d');
     
     // Create rainbow gradient
@@ -258,8 +264,8 @@ function createRainbowBackground() {
     
     // Create sprite from texture
     const sprite = new PIXI.Sprite(texture);
-    sprite.width = app.screen.width;
-    sprite.height = app.screen.height;
+    sprite.width = screenDimensions.width;
+    sprite.height = screenDimensions.height;
     
     backgroundGradient.addChild(sprite);
     
@@ -268,13 +274,20 @@ function createRainbowBackground() {
 
 // Initialize the Pixi Application
 async function init() {
-    // Create the application with v7 API
+    // Get initial screen dimensions
+    const screenDimensions = layoutManager.getScreenDimensions();
+    
+    // Create the application with fixed size (we'll handle scaling ourselves)
     app = new PIXI.Application({
-        resizeTo: window,
+        width: screenDimensions.width,
+        height: screenDimensions.height,
         backgroundColor: 0xffffff
     });
     
     document.body.appendChild(app.view);
+    
+    // Set up resize handling
+    window.addEventListener('resize', handleResize);
     
     // Create and add rainbow background
     const rainbow = createRainbowBackground();
@@ -319,13 +332,17 @@ async function loadWords() {
     }
 }
 
-// Shuffle words using Fisher-Yates algorithm
+// Shuffle words using Fisher-Yates algorithm and select 100 random words
 function shuffleWords() {
+    // First shuffle all available words
     for (let i = words.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [words[i], words[j]] = [words[j], words[i]];
     }
-    console.log('Words shuffled');
+    
+    // Take only the first 100 words for the session
+    words = words.slice(0, 100);
+    console.log(`Selected ${words.length} words for this session`);
 }
 
 // Create Title Screen
@@ -363,35 +380,38 @@ function createTitleScreenWrapper() {
 function createPracticeScreen() {
     practiceScreen = new PIXI.Container();
     
-    // Create shared word display
+    // Create shared word display using layout manager
     wordText = FontManager.createWordDisplay(practiceScreen, app);
+    
+    // Get layout positions
+    const progressLayout = layoutManager.getProgressBar();
     
     // Progress bar background
     progressBarBg = new PIXI.Graphics();
     progressBarBg.beginFill(0xcccccc);
-    progressBarBg.drawRoundedRect(0, 0, 400, 20, 10);
+    progressBarBg.drawRoundedRect(0, 0, progressLayout.width, progressLayout.height, 10);
     progressBarBg.endFill();
-    progressBarBg.x = app.screen.width / 2 - 200;
-    progressBarBg.y = app.screen.height - 50;
+    progressBarBg.x = progressLayout.x;
+    progressBarBg.y = progressLayout.y;
     practiceScreen.addChild(progressBarBg);
     
     // Progress bar fill
     progressBarFill = new PIXI.Graphics();
-    progressBarFill.x = app.screen.width / 2 - 200;
-    progressBarFill.y = app.screen.height - 50;
+    progressBarFill.x = progressLayout.x;
+    progressBarFill.y = progressLayout.y;
     practiceScreen.addChild(progressBarFill);
     
     // Progress text
     progressText = new PIXI.Text('', {
         fontFamily: 'Arial',
-        fontSize: 18,
+        fontSize: layoutManager.scaleFontSize(36),  // Doubled from 18
         fontWeight: 'bold',
         fill: 0x666666,
         align: 'center'
     });
     progressText.anchor.set(0.5);
-    progressText.x = app.screen.width / 2;
-    progressText.y = app.screen.height - 20;
+    progressText.x = layoutManager.centerX();
+    progressText.y = progressLayout.textY;
     practiceScreen.addChild(progressText);
     
     // Initialize celebration system
@@ -404,6 +424,9 @@ function createPracticeScreen() {
         backButton,
         nextButton
     });
+    
+    // Initialize button particles system
+    buttonParticles = new ButtonParticles(app, practiceScreen);
     
     // Create shared navigation buttons
     const buttons = createNavigationButtons(practiceScreen);
@@ -618,13 +641,16 @@ function createHighScoreViewScreen() {
 // Shared function to create word display - used by both practice and race modes
 // Shared function to create navigation buttons - used by both practice and race modes
 function createNavigationButtons(parentContainer) {
+    // Get button positions from layout manager
+    const buttonLayout = layoutManager.getNavigationButtons();
+    
     // Back button
-    const backBtn = createButton('Back', app.screen.width / 2 - 120, app.screen.height - 100);
+    const backBtn = createButton('Back', buttonLayout.back.x, buttonLayout.back.y);
     backBtn.on('pointerdown', handleBack);
     parentContainer.addChild(backBtn);
     
     // Next button
-    const nextBtn = createButton('Next', app.screen.width / 2 + 120, app.screen.height - 100);
+    const nextBtn = createButton('Next', buttonLayout.next.x, buttonLayout.next.y);
     nextBtn.on('pointerdown', handleNext);
     parentContainer.addChild(nextBtn);
     
@@ -709,6 +735,12 @@ function handleNext() {
     lastNextTime = currentTime;
     
     if (currentWordIndex < words.length - 1) {
+        // Create celebration particles at Next button position
+        if (buttonParticles) {
+            const buttonLayout = layoutManager.getNavigationButtons();
+            buttonParticles.celebrateNext(buttonLayout.next.x, buttonLayout.next.y);
+        }
+        
         currentWordIndex++;
         updateWord();
     } else {
@@ -760,7 +792,7 @@ function handlePracticeCompletion() {
     });
     
     // Check if it's a high score
-    if (gameData.isTopTenScore(duration)) {
+    if (gameData.isTopTenScore(duration, words.length)) {
         // Store pending score for initials input
         pendingScore = {
             time: duration,
@@ -839,87 +871,158 @@ function handleKeyPress(event) {
 function handleResize() {
     if (!app) return;
     
-    // Update background gradient size
-    if (backgroundGradient && backgroundGradient.children[0]) {
-        backgroundGradient.children[0].width = app.screen.width;
-        backgroundGradient.children[0].height = app.screen.height;
+    // Update layout manager
+    layoutManager.updateOnResize();
+    
+    // Get new screen dimensions
+    const screenDimensions = layoutManager.getScreenDimensions();
+    
+    // Resize PIXI app
+    app.renderer.resize(screenDimensions.width, screenDimensions.height);
+    
+    // Recreate background to fill new screen
+    if (backgroundGradient) {
+        app.stage.removeChild(backgroundGradient);
+        const rainbow = createRainbowBackground();
+        app.stage.addChildAt(rainbow, 0); // Add at bottom layer
     }
     
+    // Add bounce animation to all screens
+    const screens = [titleScreen, practiceScreen, raceScreen, endScreen, optionsScreen];
+    screens.forEach(screen => {
+        if (screen) {
+            layoutManager.bounceResize(screen, () => {
+                // Update individual screen layouts after bounce
+                updateScreenLayout(screen);
+            });
+        }
+    });
+    
+    // Update layouts immediately (bounce animation updates positions after)
+    updateAllScreenLayouts();
+}
+
+function updateAllScreenLayouts() {
     // Update title screen positions
-    updateTitleScreenLayout(titleScreen, app);
+    if (titleScreen) updateTitleScreenLayout(titleScreen, app);
     
-    // Update options screen positions
-    if (optionsScreen && optionsScreen.children.length > 0) {
-        optionsScreen.children[0].x = app.screen.width / 2; // title
-        optionsScreen.children[0].y = app.screen.height / 4;
-        optionsScreen.children[1].x = app.screen.width / 2; // reset button
-        optionsScreen.children[1].y = app.screen.height / 2 - 50;
-        if (optionsScreen.children.length > 2) {
-            optionsScreen.children[2].x = app.screen.width / 2; // test celebration button
-            optionsScreen.children[2].y = app.screen.height / 2 + 20;
-        }
-        if (optionsScreen.children.length > 3) {
-            optionsScreen.children[3].x = app.screen.width / 2; // back button
-            optionsScreen.children[3].y = app.screen.height / 2 + 100;
-        }
-    }
-    
-    // Update practice screen positions
-    if (practiceScreen && practiceScreen.children.length > 0) {
-        wordText.x = app.screen.width / 2;
-        wordText.y = app.screen.height / 2;
-        
-        // Update progress bar positions
-        if (progressBarBg) {
-            progressBarBg.x = app.screen.width / 2 - 200;
-            progressBarBg.y = app.screen.height - 50;
-        }
-        if (progressBarFill) {
-            progressBarFill.x = app.screen.width / 2 - 200;
-            progressBarFill.y = app.screen.height - 50;
-        }
-        if (progressText) {
-            progressText.x = app.screen.width / 2;
-            progressText.y = app.screen.height - 20;
-        }
-        
-        // Update celebration positions if active
-        if (celebrationActive && celebrationText) {
-            celebrationText.x = app.screen.width / 2;
-            if (celebrationContainer.children.length > 1) {
-                celebrationContainer.children[1].x = app.screen.width / 2; // time text
-            }
-        }
-        
-        // Update navigation button positions
-        if (backButton) {
-            backButton.x = app.screen.width / 2 - 120;
-            backButton.y = app.screen.height - 100;
-        }
-        if (nextButton) {
-            nextButton.x = app.screen.width / 2 + 120;
-            nextButton.y = app.screen.height - 100;
-        }
-    }
+    // Update practice screen positions  
+    updatePracticeScreenLayout();
     
     // Update race screen positions
-    if (raceScreen && raceScreen.visible && raceScreen.wordText) {
-        raceScreen.wordText.x = app.screen.width / 2;
-        raceScreen.wordText.y = app.screen.height / 2;
-        
-        // Update race navigation button positions
-        if (raceScreen.backButton) {
-            raceScreen.backButton.x = app.screen.width / 2 - 120;
-            raceScreen.backButton.y = app.screen.height - 100;
-        }
-        if (raceScreen.nextButton) {
-            raceScreen.nextButton.x = app.screen.width / 2 + 120;
-            raceScreen.nextButton.y = app.screen.height - 100;
+    updateRaceScreenLayout();
+    
+    // Update end screen positions
+    if (endScreen) updateEndScreenLayout(endScreen, app);
+    
+    // Update options screen positions
+    updateOptionsScreenLayout();
+}
+
+function updatePracticeScreenLayout() {
+    if (!practiceScreen) return;
+    
+    const wordLayout = layoutManager.getWordDisplay();
+    const progressLayout = layoutManager.getProgressBar();
+    const buttonLayout = layoutManager.getNavigationButtons();
+    
+    // Update word display position
+    if (wordText) {
+        wordText.x = wordLayout.x;
+        wordText.y = wordLayout.y;
+        // Update font size
+        if (wordText.style) {
+            wordText.style.fontSize = wordLayout.fontSize;
         }
     }
     
-    // Update end screen positions
-    updateEndScreenLayout(endScreen, app);
+    // Update progress bar positions
+    if (progressBarBg) {
+        progressBarBg.x = progressLayout.x;
+        progressBarBg.y = progressLayout.y;
+        progressBarBg.clear();
+        progressBarBg.beginFill(0xcccccc);
+        progressBarBg.drawRoundedRect(0, 0, progressLayout.width, progressLayout.height, 10);
+        progressBarBg.endFill();
+    }
+    if (progressBarFill) {
+        progressBarFill.x = progressLayout.x;
+        progressBarFill.y = progressLayout.y;
+    }
+    if (progressText) {
+        progressText.x = layoutManager.centerX();
+        progressText.y = progressLayout.textY;
+        progressText.style.fontSize = layoutManager.scaleFontSize(36);
+    }
+    
+    // Update navigation button positions
+    if (backButton) {
+        backButton.x = buttonLayout.back.x;
+        backButton.y = buttonLayout.back.y;
+    }
+    if (nextButton) {
+        nextButton.x = buttonLayout.next.x;
+        nextButton.y = buttonLayout.next.y;
+    }
+}
+
+function updateRaceScreenLayout() {
+    if (!raceScreen) return;
+    
+    const wordLayout = layoutManager.getWordDisplay();
+    const buttonLayout = layoutManager.getNavigationButtons();
+    
+    // Update race word display position
+    if (raceScreen.wordText) {
+        raceScreen.wordText.x = wordLayout.x;
+        raceScreen.wordText.y = wordLayout.y;
+        if (raceScreen.wordText.style) {
+            raceScreen.wordText.style.fontSize = wordLayout.fontSize;
+        }
+    }
+    
+    // Update race navigation button positions
+    if (raceScreen.backButton) {
+        raceScreen.backButton.x = buttonLayout.back.x;
+        raceScreen.backButton.y = buttonLayout.back.y;
+    }
+    if (raceScreen.nextButton) {
+        raceScreen.nextButton.x = buttonLayout.next.x;
+        raceScreen.nextButton.y = buttonLayout.next.y;
+    }
+}
+
+function updateOptionsScreenLayout() {
+    if (!optionsScreen || optionsScreen.children.length === 0) return;
+    
+    const centerX = layoutManager.centerX();
+    const gameArea = layoutManager.getGameArea();
+    
+    if (optionsScreen.children[0]) { // title
+        optionsScreen.children[0].x = centerX;
+        optionsScreen.children[0].y = gameArea.y + gameArea.height / 4;
+    }
+    if (optionsScreen.children[1]) { // reset button
+        optionsScreen.children[1].x = centerX;
+        optionsScreen.children[1].y = gameArea.y + gameArea.height / 2 - layoutManager.scale(50);
+    }
+    if (optionsScreen.children[2]) { // test celebration button
+        optionsScreen.children[2].x = centerX;
+        optionsScreen.children[2].y = gameArea.y + gameArea.height / 2 + layoutManager.scale(20);
+    }
+    if (optionsScreen.children[3]) { // back button
+        optionsScreen.children[3].x = centerX;
+        optionsScreen.children[3].y = gameArea.y + gameArea.height / 2 + layoutManager.scale(100);
+    }
+}
+
+function updateScreenLayout(screen) {
+    // Generic screen update - called after bounce animation
+    if (screen === titleScreen) updateTitleScreenLayout(titleScreen, app);
+    else if (screen === practiceScreen) updatePracticeScreenLayout();
+    else if (screen === raceScreen) updateRaceScreenLayout();
+    else if (screen === endScreen) updateEndScreenLayout(endScreen, app);
+    else if (screen === optionsScreen) updateOptionsScreenLayout();
 }
 
 // Start the application

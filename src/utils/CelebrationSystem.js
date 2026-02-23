@@ -1,5 +1,6 @@
 // CelebrationSystem module - Handles celebration animations and effects
 import * as PIXI from 'pixi.js';
+import { layoutManager } from './LayoutManager.js';
 
 /**
  * Celebration system for managing celebration animations, confetti, and effects
@@ -60,29 +61,29 @@ export class CelebrationSystem {
         // Create celebration text
         this.celebrationText = new PIXI.Text(`🎉 ${message} 🎉`, {
             fontFamily: 'Arial',
-            fontSize: 48,
+            fontSize: layoutManager.scaleFontSize(96),  // Doubled and optimized from 48
             fontWeight: 'bold',
             fill: 0xFFD700, // Gold
             align: 'center',
             stroke: 0x000000,
-            strokeThickness: 3
+            strokeThickness: layoutManager.scale(6)  // Doubled from 3
         });
         this.celebrationText.anchor.set(0.5);
-        this.celebrationText.x = this.app.screen.width / 2;
-        this.celebrationText.y = this.app.screen.height / 2 - 100;
+        this.celebrationText.x = layoutManager.centerX();
+        this.celebrationText.y = layoutManager.centerY() - layoutManager.scale(100);
         this.celebrationContainer.addChild(this.celebrationText);
         
         // Create score display
         const scoreText = new PIXI.Text(`${score} seconds!`, {
             fontFamily: 'Arial',
-            fontSize: 32,
+            fontSize: layoutManager.scaleFontSize(64),  // Doubled and optimized from 32
             fontWeight: 'bold',
             fill: 0xFFD700,
             align: 'center'
         });
         scoreText.anchor.set(0.5);
-        scoreText.x = this.app.screen.width / 2;
-        scoreText.y = this.app.screen.height / 2 - 50;
+        scoreText.x = layoutManager.centerX();
+        scoreText.y = layoutManager.centerY() - layoutManager.scale(50);
         this.celebrationContainer.addChild(scoreText);
         
         // Create confetti particles
@@ -122,7 +123,7 @@ export class CelebrationSystem {
             }
             
             // Random starting position across top of screen
-            particle.x = Math.random() * this.app.screen.width;
+            particle.x = Math.random() * layoutManager.getScreenDimensions().width;
             particle.y = -20;
             
             // Random physics properties
@@ -154,7 +155,7 @@ export class CelebrationSystem {
             particle.rotation += particle.rotationSpeed;
             
             // Remove particles that fall off screen
-            if (particle.y > this.app.screen.height + 50) {
+            if (particle.y > layoutManager.getScreenDimensions().height + 50) {
                 this.celebrationContainer.removeChild(particle);
                 this.confettiParticles.splice(index, 1);
             }

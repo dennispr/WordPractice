@@ -11,6 +11,7 @@
 
 import * as PIXI from 'pixi.js';
 import { createButton } from '../ui/Button.js';
+import { layoutManager } from '../utils/LayoutManager.js';
 
 /**
  * Create the title screen with all navigation buttons
@@ -25,42 +26,45 @@ import { createButton } from '../ui/Button.js';
 export function createTitleScreen(app, callbacks) {
     const titleScreen = new PIXI.Container();
     
+    // Get title screen layout
+    const titleLayout = layoutManager.getTitleScreen();
+    
     // Title text
     const title = new PIXI.Text('Word Practice', {
         fontFamily: 'Arial',
-        fontSize: 72,
+        fontSize: layoutManager.scaleFontSize(144),  // Doubled from 72
         fontWeight: 'bold',
         fill: 0x333333,
         align: 'center'
     });
     title.anchor.set(0.5);
-    title.x = app.screen.width / 2;
-    title.y = app.screen.height / 3;
+    title.x = titleLayout.centerX;
+    title.y = titleLayout.logoY;
     titleScreen.addChild(title);
     
-    // Start button
-    const startButton = createButton('Start', app.screen.width / 2, app.screen.height / 2 + 20);
+    // Start button (top-left)
+    const startButton = createButton('Start', titleLayout.grid.topLeft.x, titleLayout.grid.topLeft.y);
     startButton.on('pointerdown', () => {
         if (callbacks.onStart) callbacks.onStart();
     });
     titleScreen.addChild(startButton);
     
-    // Race button (race mode)
-    const raceButton = createButton('Race', app.screen.width / 2, app.screen.height / 2 + 100);
+    // Race button (top-right)
+    const raceButton = createButton('Race', titleLayout.grid.topRight.x, titleLayout.grid.topRight.y);
     raceButton.on('pointerdown', () => {
         if (callbacks.onRace) callbacks.onRace();
     });
     titleScreen.addChild(raceButton);
     
-    // Options button
-    const optionsButton = createButton('Options', app.screen.width / 2, app.screen.height / 2 + 180);
+    // Options button (bottom-left)
+    const optionsButton = createButton('Options', titleLayout.grid.bottomLeft.x, titleLayout.grid.bottomLeft.y);
     optionsButton.on('pointerdown', () => {
         if (callbacks.onOptions) callbacks.onOptions();
     });
     titleScreen.addChild(optionsButton);
     
-    // High Scores button
-    const highScoresButton = createButton('High Scores', app.screen.width / 2, app.screen.height / 2 + 260);
+    // High Scores button (bottom-right)
+    const highScoresButton = createButton('High Scores', titleLayout.grid.bottomRight.x, titleLayout.grid.bottomRight.y);
     highScoresButton.on('pointerdown', () => {
         if (callbacks.onHighScores) callbacks.onHighScores();
     });
@@ -77,24 +81,28 @@ export function createTitleScreen(app, callbacks) {
 export function updateTitleScreenLayout(titleScreen, app) {
     if (!titleScreen || titleScreen.children.length === 0) return;
     
-    // Update title text position
-    titleScreen.children[0].x = app.screen.width / 2; // title
-    titleScreen.children[0].y = app.screen.height / 3;
+    // Get updated title screen layout
+    const titleLayout = layoutManager.getTitleScreen();
     
-    // Update button positions
-    titleScreen.children[1].x = app.screen.width / 2; // start button
-    titleScreen.children[1].y = app.screen.height / 2 + 20;
+    // Update title text position and size
+    titleScreen.children[0].x = titleLayout.centerX; // title
+    titleScreen.children[0].y = titleLayout.logoY;
+    titleScreen.children[0].style.fontSize = layoutManager.scaleFontSize(144);
+    
+    // Update button positions in 2x2 grid
+    titleScreen.children[1].x = titleLayout.grid.topLeft.x;     // start button
+    titleScreen.children[1].y = titleLayout.grid.topLeft.y;
     
     if (titleScreen.children.length > 2) {
-        titleScreen.children[2].x = app.screen.width / 2; // race button
-        titleScreen.children[2].y = app.screen.height / 2 + 100;
+        titleScreen.children[2].x = titleLayout.grid.topRight.x;  // race button
+        titleScreen.children[2].y = titleLayout.grid.topRight.y;
     }
     if (titleScreen.children.length > 3) {
-        titleScreen.children[3].x = app.screen.width / 2; // options button
-        titleScreen.children[3].y = app.screen.height / 2 + 180;
+        titleScreen.children[3].x = titleLayout.grid.bottomLeft.x; // options button
+        titleScreen.children[3].y = titleLayout.grid.bottomLeft.y;
     }
     if (titleScreen.children.length > 4) {
-        titleScreen.children[4].x = app.screen.width / 2; // high scores button
-        titleScreen.children[4].y = app.screen.height / 2 + 260;
+        titleScreen.children[4].x = titleLayout.grid.bottomRight.x; // high scores button
+        titleScreen.children[4].y = titleLayout.grid.bottomRight.y;
     }
 }

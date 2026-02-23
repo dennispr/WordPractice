@@ -231,20 +231,38 @@ export class GameDataManager {
     }
     
     /**
-     * Check if a time qualifies for the top 10 high scores
-     * @param {number} time - Time in seconds to check
+     * Calculate time per word for a score entry
+     * @param {Object} scoreEntry - Score entry with time and wordsCount
+     * @returns {number} Time per word in seconds
+     */
+    getTimePerWord(scoreEntry) {
+        if (!scoreEntry.wordsCount || scoreEntry.wordsCount === 0) {
+            // For legacy scores without wordsCount, assume old default (119 words)
+            return scoreEntry.time / 119;
+        }
+        return scoreEntry.time / scoreEntry.wordsCount;
+    }
+
+    /**
+     * Check if a time qualifies for the top 10 high scores (now based on time per word)
+     * @param {number} time - Total time in seconds to check
+     * @param {number} wordsCount - Number of words completed
      * @returns {boolean} True if time qualifies for top 10
      */
-    isTopTenScore(time) {
+    isTopTenScore(time, wordsCount = 100) {
         const data = this.initData();
         const topTen = data.games[this.gameId]?.highScores?.topTen || [];
         
         // Always qualifies if less than 10 scores
         if (topTen.length < 10) return true;
         
-        // Check if better than worst score
+        // Calculate time per word for the new score
+        const newTimePerWord = time / wordsCount;
+        
+        // Check if better than worst score (by time per word)
         const worstScore = topTen[topTen.length - 1];
-        return time < worstScore.time;
+        const worstTimePerWord = this.getTimePerWord(worstScore);
+        return newTimePerWord < worstTimePerWord;
     }
     
     /**
@@ -269,8 +287,12 @@ export class GameDataManager {
         // Add to topTen
         highScores.topTen.push(scoreEntry);
         
-        // Sort by time (fastest first)
-        highScores.topTen.sort((a, b) => a.time - b.time);
+        // Sort by time per word (fastest per word first) for backwards compatibility
+        highScores.topTen.sort((a, b) => {
+            const timePerWordA = this.getTimePerWord(a);
+            const timePerWordB = this.getTimePerWord(b);
+            return timePerWordA - timePerWordB;
+        });
         
         // If more than 10, move extras to historical
         while (highScores.topTen.length > 10) {

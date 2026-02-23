@@ -1,15 +1,16 @@
 // Button UI Component
 import * as PIXI from 'pixi.js';
+import { layoutManager } from '../utils/LayoutManager.js';
 
-// Default button configuration
+// Default button configuration (doubled base sizes)
 const DEFAULT_CONFIG = {
-    width: 200,
-    height: 60,
-    borderRadius: 10,
+    width: 400,   // Doubled from 200
+    height: 120,  // Doubled from 60
+    borderRadius: 20,  // Doubled from 10
     backgroundColor: 0x4CAF50,
     hoverColor: 0x45a049,
     textColor: 0xffffff,
-    fontSize: 24,
+    fontSize: 48,  // Doubled from 24
     fontFamily: 'Arial',
     fontWeight: 'bold'
 };
@@ -23,8 +24,21 @@ const DEFAULT_CONFIG = {
  * @returns {PIXI.Container} Button container
  */
 export function createButton(text, x, y, options = {}) {
-    // Merge options with defaults
-    const config = { ...DEFAULT_CONFIG, ...options };
+    // Get scaled dimensions from layout manager
+    const scaledWidth = layoutManager.scale(DEFAULT_CONFIG.width);
+    const scaledHeight = layoutManager.scale(DEFAULT_CONFIG.height);
+    const scaledFontSize = layoutManager.scaleFontSize(DEFAULT_CONFIG.fontSize);
+    const scaledBorderRadius = layoutManager.scale(DEFAULT_CONFIG.borderRadius);
+    
+    // Merge options with defaults and scaled values
+    const config = { 
+        ...DEFAULT_CONFIG, 
+        width: scaledWidth,
+        height: scaledHeight,
+        fontSize: scaledFontSize,
+        borderRadius: scaledBorderRadius,
+        ...options 
+    };
     
     const button = new PIXI.Container();
     button.x = x;
