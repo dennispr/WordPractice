@@ -138,8 +138,8 @@ export function initRaceMode(words, gameData) {
     // Get high scores for race opponents
     const scores = gameData.getHighScores();
     
-    // Set race data
-    raceData.totalWords = words.length;
+    // Set race data - ensure we're working with exactly 100 words
+    raceData.totalWords = Math.min(words.length, 100);  // Explicitly cap at 100
     raceData.currentStartTime = new Date();
     raceData.maxWordIndex = 0; // Reset max progress for new race
     
@@ -152,9 +152,9 @@ export function initRaceMode(words, gameData) {
         const slowestScore = scores.topTen[scores.topTen.length - 1].time;
         raceData.recentTime = Math.round(slowestScore * 0.6);
     } else {
-        // Defaults for new 100-word system: 5 min best, 3.6 min recent (60% of 6 min)
-        raceData.bestTime = 300;
-        raceData.recentTime = 216;
+        // Defaults optimized for 100-word sessions: 5 min best, 3.6 min recent (60% of 6 min)
+        raceData.bestTime = 300;  // 5 minutes for 100 words = 3 seconds per word
+        raceData.recentTime = 216;  // 3.6 minutes for 100 words = 2.16 seconds per word
     }
     
     // Reset racer positions (with safety check)

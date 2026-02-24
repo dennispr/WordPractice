@@ -705,18 +705,19 @@ function updateWord() {
 
 // Update progress bar display
 function updateProgressBar() {
+    const progressLayout = layoutManager.getProgressBar();
     const progress = (currentWordIndex + 1) / words.length;
-    const fillWidth = 400 * progress;
+    const fillWidth = progressLayout.width * progress;
     const percentage = Math.round(progress * 100);
     
-    // Update fill bar
+    // Update fill bar using proper scaled dimensions
     progressBarFill.clear();
     progressBarFill.beginFill(0x4CAF50);
-    progressBarFill.drawRoundedRect(0, 0, fillWidth, 20, 10);
+    progressBarFill.drawRoundedRect(0, 0, fillWidth, progressLayout.height, 10);
     progressBarFill.endFill();
     
-    // Update text with percentage
-    progressText.text = `${percentage}% Complete (${currentWordIndex + 1}/${words.length})`;
+    // Update text with percentage - show 100 words explicitly
+    progressText.text = `${percentage}% Complete (${currentWordIndex + 1}/100 words)`;
 }
 
 // Create celebration effect for new best time
@@ -963,6 +964,11 @@ function updatePracticeScreenLayout() {
     if (nextButton) {
         nextButton.x = buttonLayout.next.x;
         nextButton.y = buttonLayout.next.y;
+    }
+    
+    // Redraw progress bar with updated dimensions
+    if (currentScreen === 'practice') {
+        updateProgressBar();
     }
 }
 
