@@ -9,7 +9,16 @@ import {
 import { createButton } from './ui/Button.js';
 import { GameDataManager } from './data/GameDataManager.js';
 import { createTitleScreen, updateTitleScreenLayout } from './screens/TitleScreen.js';
+import { createModeSelectScreen, updateModeSelectScreenLayout as updateModeSelectLayout } from './screens/ModeSelectScreen.js';
 import { createEndScreen, updateEndScreenLayout } from './screens/EndScreen.js';
+import { createOptionsScreen, updateOptionsScreenLayout } from './screens/OptionsScreen.js';
+import {
+    createHighScoreInputScreen,
+    createHighScoreViewScreen,
+    updateHighScoreInput as refreshHighScoreInput,
+    updateHighScoreView as refreshHighScoreView
+} from './screens/HighScoreScreen.js';
+import { loadPracticeWords, loadHomeworkWords, getPracticeWords, getHomeworkWords, prepareWords } from './core/WordManager.js';
 import { FontManager } from './utils/FontManager.js';
 import { CelebrationSystem } from './utils/CelebrationSystem.js';
 import { layoutManager } from './utils/LayoutManager.js';
@@ -18,15 +27,17 @@ import { screenManager } from './core/ScreenManager.js';
 
 // App state
 let app;
-let words = [];
+let words = [];            // working word list for the current session
+let currentWordsSource = null; // reference to the pool used (practice or homework)
 let currentWordIndex = 0;
-let currentScreen = 'title'; // 'title', 'practice', 'end'
+let currentScreen = 'title'; // 'title', 'modeSelect', 'practice', 'race', 'end' …
 
 // Background elements
 let backgroundGradient;
 
 // UI containers
 let titleScreen;
+let modeSelectScreen;
 let practiceScreen;
 let raceScreen;
 let endScreen;
@@ -62,6 +73,9 @@ let buttonParticles;
 // Game Data Manager for localStorage
 // Initialize game data manager
 const gameData = new GameDataManager('word-practice', 'Word Practice', 'Videogame Workshop LLC');
+
+// Victory sound
+let victorySound = null;
 
 // High score input handling
 let currentInitials = '';
@@ -109,116 +123,11 @@ function submitHighScore() {
             onComplete: () => {
                 console.log('✅ Going to high score screen after celebration');
                 const newScoreInfo = { time: scoreTime, initials: initials, wordsCount: wordsCount };
-                updateHighScoreView(newScoreInfo); // Refresh high score display with new score info
-                showScreen('highScoreView'); // Show high scores instead of going to end screen
+                refreshHighScoreView(highScoreViewScreen, gameData, newScoreInfo);
+                showScreen('highScoreView');
             }
         });
     }, 200);
-}
-
-// Update high score input display
-function updateHighScoreInput() {
-    if (!highScoreInputScreen || !highScoreInputScreen.visible) return;
-    
-    const inputDisplay = highScoreInputScreen.children[2]; // Third child is input display
-    const displayText = currentInitials.padEnd(3, '_');
-    inputDisplay.text = displayText;
-}
-
-// Update high score view with current scores
-function updateHighScoreView(newScore = null) {
-    if (!highScoreViewScreen) return;
-    
-    const scoresContainer = highScoreViewScreen.children[1]; // Second child is scores container
-    scoresContainer.removeChildren();
-    
-    const scores = gameData.getHighScores();
-    
-    if (scores.topTen.length === 0 && !newScore) {
-        const noScoresText = new PIXI.Text('No high scores yet!\n\nComplete the word practice to set your first score.', {
-            fontFamily: 'Arial',
-            fontSize: 24,
-            fill: 0x666666,
-            align: 'center'
-        });
-        noScoresText.anchor.set(0.5);
-        scoresContainer.addChild(noScoresText);
-        return;
-    }
-    
-    // Display top ten scores
-    scores.topTen.forEach((score, index) => {
-        const rankText = `${index + 1}.`;
-        const timeText = `${score.time}s`;
-        const initialsText = score.initials;
-        const wordsText = `${score.wordsCount} words`;
-        
-        // Check if this is the newly added score (bold it)
-        const isNewScore = newScore && score.time === newScore.time && score.initials === newScore.initials;
-        
-        const scoreText = new PIXI.Text(`${rankText.padEnd(4)} ${initialsText.padEnd(4)} ${timeText.padEnd(8)} ${wordsText}`, {
-            fontFamily: 'Courier New',
-            fontSize: index === 0 ? 20 : 18,
-            fontWeight: (index === 0 || isNewScore) ? 'bold' : 'normal',
-            fill: index === 0 ? 0xFFD700 : (isNewScore ? 0x00AA00 : 0x333333),
-            align: 'left'
-        });
-        scoreText.anchor.set(0.5, 0);
-        scoreText.y = index * 30;
-        scoresContainer.addChild(scoreText);
-    });
-    
-    // Show current score if it didn't make top ten
-    if (newScore && !gameData.isTopTenScore(newScore.time, newScore.wordsCount)) {
-        // Add separator
-        const separatorText = new PIXI.Text('─────────────────────', {
-            fontFamily: 'Courier New',
-            fontSize: 16,
-            fill: 0x999999,
-            align: 'center'
-        });
-        separatorText.anchor.set(0.5, 0);
-        separatorText.y = scores.topTen.length * 30 + 15;
-        scoresContainer.addChild(separatorText);
-        
-        // Add current score label
-        const currentScoreLabel = new PIXI.Text('CURRENT SCORE', {
-            fontFamily: 'Arial',
-            fontSize: 16,
-            fontWeight: 'bold',
-            fill: 0x666666,
-            align: 'center'
-        });
-        currentScoreLabel.anchor.set(0.5, 0);
-        currentScoreLabel.y = scores.topTen.length * 30 + 35;
-        scoresContainer.addChild(currentScoreLabel);
-        
-        // Add current score
-        const currentScoreText = new PIXI.Text(`${newScore.initials.padEnd(4)} ${newScore.time}s`.padEnd(12) + ` ${newScore.wordsCount} words`, {
-            fontFamily: 'Courier New',
-            fontSize: 18,
-            fontWeight: 'bold',
-            fill: 0x0066CC,
-            align: 'center'
-        });
-        currentScoreText.anchor.set(0.5, 0);
-        currentScoreText.y = scores.topTen.length * 30 + 55;
-        scoresContainer.addChild(currentScoreText);
-    }
-    
-    // Show total historical scores if any
-    const historicalOffset = newScore && !gameData.isTopTenScore(newScore.time, newScore.wordsCount) ? 100 : 20;
-    if (scores.historical.length > 0) {
-        const historicalText = new PIXI.Text(`\n${scores.historical.length} historical scores tracked`, {
-            fontFamily: 'Arial',
-            fontSize: 14,
-            fill: 0x888888,
-            align: 'center'
-        });
-        historicalText.anchor.set(0.5, 0);
-        historicalText.y = scores.topTen.length * 30 + historicalOffset;
-        scoresContainer.addChild(historicalText);
-    }
 }
 
 // Reset all save data to defaults
@@ -297,19 +206,25 @@ async function init() {
     const rainbow = createRainbowBackground();
     app.stage.addChild(rainbow);
     
-    // Load words from CSV
-    await loadWords();
+    // Load word lists
+    await loadPracticeWords();
+    await loadHomeworkWords();
+
+    // Pre-load victory sound
+    victorySound = new Audio('Victory!.mp3');
+    victorySound.preload = 'auto';
     
     // Create all screens and register with ScreenManager
     createTitleScreenWrapper();
+    createModeSelectScreenWrapper();
     createPracticeScreen();
     raceScreen = createRaceScreenModule(app, (parentContainer) => FontManager.createWordDisplay(parentContainer, app), createNavigationButtons);
     app.stage.addChild(raceScreen);
     screenManager.addScreen('race', raceScreen);
     createEndScreenWrapper();
-    createOptionsScreen();
-    createHighScoreInputScreen();
-    createHighScoreViewScreen();
+    createOptionsScreenWrapper();
+    createHighScoreInputScreenWrapper();
+    createHighScoreViewScreenWrapper();
     
     // Show title screen
     showScreen('title');
@@ -321,53 +236,11 @@ async function init() {
     window.addEventListener('resize', handleResize);
 }
 
-// Load words from CSV file
-async function loadWords() {
-    try {
-        const response = await fetch('words.csv');
-        const text = await response.text();
-        words = text.split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0);
-        console.log(`Loaded ${words.length} words`);
-    } catch (error) {
-        console.error('Error loading words:', error);
-        words = ['Error', 'loading', 'words'];
-    }
-}
-
-// Shuffle words using Fisher-Yates algorithm and select 100 random words
-function shuffleWords() {
-    // First shuffle all available words
-    for (let i = words.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [words[i], words[j]] = [words[j], words[i]];
-    }
-    
-    // Take only the first 100 words for the session
-    words = words.slice(0, 100);
-    console.log(`Selected ${words.length} words for this session`);
-}
-
 // Create Title Screen
 function createTitleScreenWrapper() {
     titleScreen = createTitleScreen(app, {
-        onStart: () => {
-            shuffleWords();
-            currentWordIndex = 0;
-            sessionStartTime = new Date().toISOString();
-            backButtonUses = 0;
-            showScreen('practice');
-            updateWord();
-        },
-        onRace: () => {
-            shuffleWords();
-            currentWordIndex = 0;
-            sessionStartTime = new Date().toISOString();
-            backButtonUses = 0;
-            initRaceMode(words, gameData);
-            showScreen('race');
-            updateWord();
+        onPlay: () => {
+            showScreen('modeSelect');
         },
         onOptions: () => {
             showScreen('options');
@@ -379,6 +252,46 @@ function createTitleScreenWrapper() {
     
     app.stage.addChild(titleScreen);
     screenManager.addScreen('title', titleScreen);
+}
+
+// Create Mode Select Screen
+function createModeSelectScreenWrapper() {
+    modeSelectScreen = createModeSelectScreen(app, {
+        onHomework: () => {
+            currentWordsSource = getHomeworkWords();
+            words = prepareWords(currentWordsSource);
+            currentWordIndex = 0;
+            sessionStartTime = new Date().toISOString();
+            backButtonUses = 0;
+            showScreen('practice');
+            updateWord();
+        },
+        onPractice: () => {
+            currentWordsSource = getPracticeWords();
+            words = prepareWords(currentWordsSource);
+            currentWordIndex = 0;
+            sessionStartTime = new Date().toISOString();
+            backButtonUses = 0;
+            showScreen('practice');
+            updateWord();
+        },
+        onRace: () => {
+            currentWordsSource = getPracticeWords();
+            words = prepareWords(currentWordsSource);
+            currentWordIndex = 0;
+            sessionStartTime = new Date().toISOString();
+            backButtonUses = 0;
+            initRaceMode(words, gameData);
+            showScreen('race');
+            updateWord();
+        },
+        onBack: () => {
+            showScreen('title');
+        }
+    });
+
+    app.stage.addChild(modeSelectScreen);
+    screenManager.addScreen('modeSelect', modeSelectScreen);
 }
 
 // Create Practice Screen
@@ -460,7 +373,7 @@ function createEndScreenWrapper() {
             showScreen('title');
         },
         onShuffleRestart: () => {
-            shuffleWords();
+            words = prepareWords(currentWordsSource || getPracticeWords());
             currentWordIndex = 0;
             sessionStartTime = new Date().toISOString();
             backButtonUses = 0;
@@ -473,172 +386,52 @@ function createEndScreenWrapper() {
 }
 
 // Create Options Screen
-function createOptionsScreen() {
-    optionsScreen = new PIXI.Container();
-    
-    // Options title
-    const optionsTitle = new PIXI.Text('Options', {
-        fontFamily: 'Arial',
-        fontSize: 48,
-        fontWeight: 'bold',
-        fill: 0x333333,
-        align: 'center'
-    });
-    optionsTitle.anchor.set(0.5);
-    optionsTitle.x = app.screen.width / 2;
-    optionsTitle.y = app.screen.height / 4;
-    optionsScreen.addChild(optionsTitle);
-    
-    // Reset Progress button
-    const resetButton = createButton('Reset Progress', app.screen.width / 2, app.screen.height / 2 - 50);
-    resetButton.on('pointerdown', () => {
-        if (confirm('Are you sure you want to reset all progress? This cannot be undone.')) {
+function createOptionsScreenWrapper() {
+    optionsScreen = createOptionsScreen(app, {
+        onReset: () => {
             resetSaveData();
-            showScreen('title'); // Return to title after reset
+            showScreen('title');
+        },
+        onTestCelebration: () => {
+            const originalWords = words.slice();
+            const originalIndex = currentWordIndex;
+            words = ['TEST'];
+            currentWordIndex = 0;
+            showScreen('practice');
+            updateWord();
+            updateProgressBar();
+            setTimeout(() => {
+                const testTime = Math.floor(Math.random() * 60) + 30;
+                const messages = ['NEW BEST TIME!', 'FIRST COMPLETION!', 'TOP SCORE!'];
+                celebrationSystem.createCelebration(
+                    testTime,
+                    messages[Math.floor(Math.random() * messages.length)],
+                    { onComplete: () => { words = originalWords; currentWordIndex = originalIndex; } }
+                );
+            }, 100);
+        },
+        onBackToTitle: () => {
+            showScreen('title');
         }
     });
-    optionsScreen.addChild(resetButton);
-    
-    // Test Celebration button (for debugging)
-    const testCelebrationButton = createButton('Test Celebration', app.screen.width / 2, app.screen.height / 2 + 20);
-    testCelebrationButton.on('pointerdown', () => {
-        // Set up minimal test data
-        const originalWords = words.slice(); // Save original words
-        const originalIndex = currentWordIndex;
-        
-        // Set test word and index
-        words = ['TEST']; // Single word for testing
-        currentWordIndex = 0;
-        
-        // Show practice screen first so celebration renders properly
-        showScreen('practice');
-        updateWord(); // Update display with test word
-        updateProgressBar(); // Update progress bar
-        
-        // Trigger celebration after a brief delay
-        setTimeout(() => {
-            const testTime = Math.floor(Math.random() * 60) + 30; // Random time between 30-90 seconds
-            const messages = ['NEW BEST TIME!', 'FIRST COMPLETION!', 'TOP SCORE!'];
-            const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-            celebrationSystem.createCelebration(testTime, randomMessage, {
-                onComplete: () => {
-                    // Restore original data after celebration
-                    words = originalWords;
-                    currentWordIndex = originalIndex;
-                    console.log('Test celebration complete. Original data restored.');
-                }
-            });
-        }, 100);
-    });
-    optionsScreen.addChild(testCelebrationButton);
-    
-    // Back to Title button
-    const backToTitleButton = createButton('Back to Title', app.screen.width / 2, app.screen.height / 2 + 100);
-    backToTitleButton.on('pointerdown', () => {
-        showScreen('title');
-    });
-    optionsScreen.addChild(backToTitleButton);
-    
     app.stage.addChild(optionsScreen);
     screenManager.addScreen('options', optionsScreen);
 }
 
 // Create High Score Input Screen
-function createHighScoreInputScreen() {
-    highScoreInputScreen = new PIXI.Container();
-    
-    // Congratulations text
-    const congratsText = new PIXI.Text('New High Score!', {
-        fontFamily: 'Arial',
-        fontSize: 48,
-        fontWeight: 'bold',
-        fill: 0xFFD700,
-        align: 'center'
+function createHighScoreInputScreenWrapper() {
+    highScoreInputScreen = createHighScoreInputScreen(app, {
+        onSubmit: () => submitHighScore()
     });
-    congratsText.anchor.set(0.5);
-    congratsText.x = app.screen.width / 2;
-    congratsText.y = app.screen.height / 4;
-    highScoreInputScreen.addChild(congratsText);
-    
-    // Instructions
-    const instructionsText = new PIXI.Text('Enter your initials (3 letters):', {
-        fontFamily: 'Arial',
-        fontSize: 24,
-        fill: 0x333333,
-        align: 'center'
-    });
-    instructionsText.anchor.set(0.5);
-    instructionsText.x = app.screen.width / 2;
-    instructionsText.y = app.screen.height / 2 - 60;
-    highScoreInputScreen.addChild(instructionsText);
-    
-    // Input display
-    const inputDisplay = new PIXI.Text('___', {
-        fontFamily: 'Courier New',
-        fontSize: 48,
-        fontWeight: 'bold',
-        fill: 0x000000,
-        align: 'center'
-    });
-    inputDisplay.anchor.set(0.5);
-    inputDisplay.x = app.screen.width / 2;
-    inputDisplay.y = app.screen.height / 2;
-    highScoreInputScreen.addChild(inputDisplay);
-    
-    // Instructions for controls
-    const controlsText = new PIXI.Text('Type your initials and press ENTER\n(or click Submit)', {
-        fontFamily: 'Arial',
-        fontSize: 18,
-        fill: 0x666666,
-        align: 'center'
-    });
-    controlsText.anchor.set(0.5);
-    controlsText.x = app.screen.width / 2;
-    controlsText.y = app.screen.height / 2 + 60;
-    highScoreInputScreen.addChild(controlsText);
-    
-    // Submit button
-    const submitButton = createButton('Submit', app.screen.width / 2, app.screen.height / 2 + 120);
-    submitButton.on('pointerdown', () => {
-        console.log('🖱️ Submit button clicked');
-        submitHighScore();
-    });
-    highScoreInputScreen.addChild(submitButton);
-    
     app.stage.addChild(highScoreInputScreen);
     screenManager.addScreen('highScoreInput', highScoreInputScreen);
 }
 
 // Create High Score View Screen
-function createHighScoreViewScreen() {
-    highScoreViewScreen = new PIXI.Container();
-    
-    // Title
-    const titleText = new PIXI.Text('High Scores', {
-        fontFamily: 'Arial',
-        fontSize: 48,
-        fontWeight: 'bold',
-        fill: 0x333333,
-        align: 'center'
+function createHighScoreViewScreenWrapper() {
+    highScoreViewScreen = createHighScoreViewScreen(app, {
+        onBack: () => showScreen('title')
     });
-    titleText.anchor.set(0.5);
-    titleText.x = app.screen.width / 2;
-    titleText.y = 80;
-    highScoreViewScreen.addChild(titleText);
-    
-    // Scores container (will be populated dynamically)
-    const scoresContainer = new PIXI.Container();
-    scoresContainer.x = app.screen.width / 2;
-    scoresContainer.y = 150;
-    highScoreViewScreen.addChild(scoresContainer);
-    
-    // Back button
-    const backButton = createButton('Back to Title', app.screen.width / 2, app.screen.height - 100);
-    backButton.on('pointerdown', () => {
-        showScreen('title');
-    });
-    highScoreViewScreen.addChild(backButton);
-    
     app.stage.addChild(highScoreViewScreen);
     screenManager.addScreen('highScoreView', highScoreViewScreen);
 }
@@ -680,10 +473,10 @@ function showScreen(screen) {
     
     // Handle screen-specific activation logic
     if (screen === 'highScoreInput' && highScoreInputScreen) {
-        updateHighScoreInput();
+        refreshHighScoreInput(highScoreInputScreen, currentInitials);
     }
     if (screen === 'highScoreView' && highScoreViewScreen) {
-        updateHighScoreView();
+        refreshHighScoreView(highScoreViewScreen, gameData);
     }
 }
 
@@ -746,6 +539,7 @@ function handleNext() {
         if (currentScreen === 'race') {
             const raceResult = handleRaceCompletionModule(sessionStartTime, words, backButtonUses, handlePracticeCompletion);
             if (raceResult.shouldShowEnd) {
+                playVictorySound();
                 showScreen('end');
                 return;
             } else if (raceResult.continueWithPracticeCompletion) {
@@ -758,8 +552,17 @@ function handleNext() {
     }
 }
 
+// Play the victory sound (safe – catches errors on browsers that block autoplay)
+function playVictorySound() {
+    if (!victorySound) return;
+    victorySound.currentTime = 0;
+    victorySound.play().catch(err => console.warn('Victory sound blocked:', err));
+}
+
 // Handle practice mode completion (contains original completion logic)
 function handlePracticeCompletion() {
+    playVictorySound();
+
     if (!sessionStartTime) {
         showScreen('end');
         return;
@@ -810,14 +613,14 @@ function handlePracticeCompletion() {
             onComplete: () => {
                 // Show high score screen with current score if it's a new best
                 const currentScoreInfo = { time: duration, initials: 'YOU', wordsCount: words.length };
-                updateHighScoreView(currentScoreInfo);
+                refreshHighScoreView(highScoreViewScreen, gameData, currentScoreInfo);
                 showScreen('highScoreView');
             }
         });
     } else {
         // Even if it's not a new best, show their score
         const currentScoreInfo = { time: duration, initials: 'YOU', wordsCount: words.length };
-        updateHighScoreView(currentScoreInfo);
+        refreshHighScoreView(highScoreViewScreen, gameData, currentScoreInfo);
         showScreen('highScoreView');
     }
 }
@@ -855,11 +658,11 @@ function handleKeyPress(event) {
             submitHighScore();
         } else if (event.key === 'Backspace') {
             currentInitials = currentInitials.slice(0, -1);
-            updateHighScoreInput();
+            refreshHighScoreInput(highScoreInputScreen, currentInitials);
         } else if (event.key.length === 1 && event.key.match(/[a-zA-Z]/)) {
             if (currentInitials.length < 3) {
                 currentInitials += event.key.toUpperCase();
-                updateHighScoreInput();
+                refreshHighScoreInput(highScoreInputScreen, currentInitials);
             }
         }
     }
@@ -889,7 +692,7 @@ function handleResize() {
     }
     
     // Add bounce animation to all screens
-    const screens = [titleScreen, practiceScreen, raceScreen, endScreen, optionsScreen];
+    const screens = [titleScreen, modeSelectScreen, practiceScreen, raceScreen, endScreen, optionsScreen];
     screens.forEach(screen => {
         if (screen) {
             layoutManager.bounceResize(screen, () => {
@@ -904,20 +707,12 @@ function handleResize() {
 }
 
 function updateAllScreenLayouts() {
-    // Update title screen positions
-    if (titleScreen) updateTitleScreenLayout(titleScreen, app);
-    
-    // Update practice screen positions  
+    if (titleScreen) updateTitleScreenLayout(titleScreen);
+    if (modeSelectScreen) updateModeSelectLayout(modeSelectScreen);
     updatePracticeScreenLayout();
-    
-    // Update race screen positions
     updateRaceScreenLayout();
-    
-    // Update end screen positions
     if (endScreen) updateEndScreenLayout(endScreen, app);
-    
-    // Update options screen positions
-    updateOptionsScreenLayout();
+    if (optionsScreen) updateOptionsScreenLayout(optionsScreen);
 }
 
 function updatePracticeScreenLayout() {
@@ -998,37 +793,13 @@ function updateRaceScreenLayout() {
     }
 }
 
-function updateOptionsScreenLayout() {
-    if (!optionsScreen || optionsScreen.children.length === 0) return;
-    
-    const centerX = layoutManager.centerX();
-    const gameArea = layoutManager.getGameArea();
-    
-    if (optionsScreen.children[0]) { // title
-        optionsScreen.children[0].x = centerX;
-        optionsScreen.children[0].y = gameArea.y + gameArea.height / 4;
-    }
-    if (optionsScreen.children[1]) { // reset button
-        optionsScreen.children[1].x = centerX;
-        optionsScreen.children[1].y = gameArea.y + gameArea.height / 2 - layoutManager.scale(50);
-    }
-    if (optionsScreen.children[2]) { // test celebration button
-        optionsScreen.children[2].x = centerX;
-        optionsScreen.children[2].y = gameArea.y + gameArea.height / 2 + layoutManager.scale(20);
-    }
-    if (optionsScreen.children[3]) { // back button
-        optionsScreen.children[3].x = centerX;
-        optionsScreen.children[3].y = gameArea.y + gameArea.height / 2 + layoutManager.scale(100);
-    }
-}
-
 function updateScreenLayout(screen) {
-    // Generic screen update - called after bounce animation
-    if (screen === titleScreen) updateTitleScreenLayout(titleScreen, app);
+    if (screen === titleScreen) updateTitleScreenLayout(titleScreen);
+    else if (screen === modeSelectScreen) updateModeSelectLayout(modeSelectScreen);
     else if (screen === practiceScreen) updatePracticeScreenLayout();
     else if (screen === raceScreen) updateRaceScreenLayout();
     else if (screen === endScreen) updateEndScreenLayout(endScreen, app);
-    else if (screen === optionsScreen) updateOptionsScreenLayout();
+    else if (screen === optionsScreen) updateOptionsScreenLayout(optionsScreen);
 }
 
 // Start the application
