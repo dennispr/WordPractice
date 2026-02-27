@@ -54,6 +54,14 @@ export function createTitleScreen(app, callbacks) {
     highScoresButton.on('pointerdown', () => { if (callbacks.onHighScores) callbacks.onHighScores(); });
     titleScreen.addChild(highScoresButton);
 
+    // Flying star                       child[4]
+    const star = new PIXI.Text('⭐', {
+        fontSize: layoutManager.scaleFontSize(288)
+    });
+    star.anchor.set(0.5);
+    star.alpha = 0;
+    titleScreen.addChild(star);
+
     // ── Tween-in animation ──────────────────────────────────────────────────
     let tweenTickerFn = null;
 
@@ -79,7 +87,23 @@ export function createTitleScreen(app, callbacks) {
         const optStartX    = ga.x - 500;
         const hsStartX     = ga.x + ga.width + 500;
 
-        // Snap all elements to their start positions
+        // Star arc — quadratic bezier from lower-left to upper-right
+        // P0: lower-left corner area
+        const starP0x = ga.x + layoutManager.scale(80);
+        const starP0y = ga.y + ga.height - layoutManager.scale(80);
+        // P2: upper-right corner area
+        const starP2x = ga.x + ga.width  - layoutManager.scale(150);
+        const starP2y = ga.y + layoutManager.scale(150);
+        // P1 (control point): pulls the arc outward through the upper-left area
+        const starP1x = ga.x + ga.width  * 0.25;
+        const starP1y = ga.y + layoutManager.scale(60);
+
+        star.alpha    = 0;
+        star.rotation = 0;
+        star.x = starP0x;
+        star.y = starP0y;
+
+        // Snap all UI elements to their start positions
         title.x          = tl.centerX;
         title.y          = titleStartY;
         title.alpha      = 0;
@@ -97,7 +121,7 @@ export function createTitleScreen(app, callbacks) {
         highScoresButton.alpha = 0;
 
         let elapsed = 0;
-        const duration = 600; // ms
+        const duration = 1400; // ms — doubled so the star arc is clearly visible
 
         function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
@@ -118,11 +142,20 @@ export function createTitleScreen(app, callbacks) {
             highScoresButton.x     = hsStartX + (hsTargetX  - hsStartX)    * ease;
             highScoresButton.alpha = ease;
 
+            // Star: quadratic bezier position
+            const mt = 1 - t;
+            star.x = mt * mt * starP0x + 2 * mt * t * starP1x + t * t * starP2x;
+            star.y = mt * mt * starP0y + 2 * mt * t * starP1y + t * t * starP2y;
+            // Fade in quickly, then fade out in the last 25%
+            star.alpha    = t < 0.15 ? t / 0.15 : (t > 0.75 ? 1 - (t - 0.75) / 0.25 : 1);
+            star.rotation = t * Math.PI * 2; // one full spin over the arc
+
             if (t >= 1) {
                 title.y          = titleTargetY;   title.alpha          = 1;
                 playButton.y     = playTargetY;    playButton.alpha     = 1;
                 optionsButton.x  = optTargetX;     optionsButton.alpha  = 1;
                 highScoresButton.x = hsTargetX;    highScoresButton.alpha = 1;
+                star.alpha       = 0; // gone after arc
                 app.ticker.remove(tweenTickerFn);
                 tweenTickerFn = null;
             }
