@@ -56,7 +56,7 @@ export function createTitleScreen(app, callbacks) {
 
     // Flying star                       child[4]
     const star = new PIXI.Text('⭐', {
-        fontSize: layoutManager.scaleFontSize(288)
+        fontSize: layoutManager.scaleFontSize(144)
     });
     star.anchor.set(0.5);
     star.alpha = 0;
