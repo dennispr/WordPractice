@@ -10,6 +10,7 @@ import { createButton } from './ui/Button.js';
 import { GameDataManager } from './data/GameDataManager.js';
 import { createTitleScreen, updateTitleScreenLayout } from './screens/TitleScreen.js';
 import { createModeSelectScreen, updateModeSelectScreenLayout as updateModeSelectLayout } from './screens/ModeSelectScreen.js';
+import { createLyricsScreen, updateLyricsWordDisplay, updateLyricsScreenLayout } from './screens/LyricsScreen.js';
 import { createEndScreen, updateEndScreenLayout } from './screens/EndScreen.js';
 import { createOptionsScreen, updateOptionsScreenLayout } from './screens/OptionsScreen.js';
 import {
@@ -18,7 +19,7 @@ import {
     updateHighScoreInput as refreshHighScoreInput,
     updateHighScoreView as refreshHighScoreView
 } from './screens/HighScoreScreen.js';
-import { loadPracticeWords, loadHomeworkWords, getPracticeWords, getHomeworkWords, prepareWords } from './core/WordManager.js';
+import { loadPracticeWords, loadHomeworkWords, loadLyricsLines, getPracticeWords, getHomeworkWords, getLyricsLines, prepareWords } from './core/WordManager.js';
 import { FontManager } from './utils/FontManager.js';
 import { CelebrationSystem } from './utils/CelebrationSystem.js';
 import { layoutManager } from './utils/LayoutManager.js';
@@ -30,7 +31,12 @@ let app;
 let words = [];            // working word list for the current session
 let currentWordsSource = null; // reference to the pool used (practice or homework)
 let currentWordIndex = 0;
-let currentScreen = 'title'; // 'title', 'modeSelect', 'practice', 'race', 'end' …
+let currentScreen = 'title'; // 'title', 'modeSelect', 'practice', 'race', 'lines', 'end' …
+
+// Lyrics mode state
+let lyricsLines    = [];  // string[][] – each entry is one parsed CSV line
+let currentLineIndex   = 0;
+let currentWordInLine  = 0;
 
 // Background elements
 let backgroundGradient;
@@ -40,6 +46,7 @@ let titleScreen;
 let modeSelectScreen;
 let practiceScreen;
 let raceScreen;
+let lyricsScreen;
 let endScreen;
 let optionsScreen;
 let highScoreInputScreen;
@@ -209,6 +216,7 @@ async function init() {
     // Load word lists
     await loadPracticeWords();
     await loadHomeworkWords();
+    await loadLyricsLines();
 
     // Pre-load victory sound
     victorySound = new Audio('Victory!.mp3');
@@ -221,6 +229,7 @@ async function init() {
     raceScreen = createRaceScreenModule(app, (parentContainer) => FontManager.createWordDisplay(parentContainer, app), createNavigationButtons);
     app.stage.addChild(raceScreen);
     screenManager.addScreen('race', raceScreen);
+    createLyricsScreenWrapper();
     createEndScreenWrapper();
     createOptionsScreenWrapper();
     createHighScoreInputScreenWrapper();
@@ -284,6 +293,13 @@ function createModeSelectScreenWrapper() {
             initRaceMode(words, gameData);
             showScreen('race');
             updateWord();
+        },
+        onLines: () => {
+            lyricsLines = getLyricsLines();
+            currentLineIndex  = 0;
+            currentWordInLine = 0;
+            showScreen('lines');
+            updateLyricsDisplay();
         },
         onBack: () => {
             showScreen('title');
@@ -363,6 +379,16 @@ function createPracticeScreen() {
     
     app.stage.addChild(practiceScreen);
     screenManager.addScreen('practice', practiceScreen);
+}
+
+// Create Lyrics Screen
+function createLyricsScreenWrapper() {
+    lyricsScreen = createLyricsScreen(app, {
+        onNext: handleNext,
+        onBack: handleBack,
+    });
+    app.stage.addChild(lyricsScreen);
+    screenManager.addScreen('lines', lyricsScreen);
 }
 
 // Create End Screen
@@ -514,8 +540,58 @@ function updateProgressBar() {
 }
 
 // Create celebration effect for new best time
+// ── Lyrics mode helpers ──────────────────────────────────────────────────────
+
+/** Recompute and redraw the lyrics word display from current state. */
+function updateLyricsDisplay() {
+    const line        = lyricsLines[currentLineIndex];
+    const windowStart = Math.floor(currentWordInLine / 4) * 4;
+    updateLyricsWordDisplay(
+        lyricsScreen, line, windowStart, currentWordInLine,
+        currentLineIndex, lyricsLines.length
+    );
+}
+
+function handleLyricsNext() {
+    const currentTime = Date.now();
+    if (currentTime - lastNextTime < BUTTON_COOLDOWN) return;
+    lastNextTime = currentTime;
+
+    const line = lyricsLines[currentLineIndex];
+    if (currentWordInLine < line.length - 1) {
+        currentWordInLine++;
+    } else if (currentLineIndex < lyricsLines.length - 1) {
+        currentLineIndex++;
+        currentWordInLine = 0;
+    } else {
+        // All lyrics exhausted – return to mode select
+        showScreen('modeSelect');
+        return;
+    }
+    updateLyricsDisplay();
+}
+
+function handleLyricsBack() {
+    const currentTime = Date.now();
+    if (currentTime - lastBackTime < BUTTON_COOLDOWN) return;
+    lastBackTime = currentTime;
+
+    const windowStart = Math.floor(currentWordInLine / 4) * 4;
+    if (currentWordInLine > windowStart) {
+        // Previous word is still visible on screen – step back one word
+        currentWordInLine--;
+    } else if (currentLineIndex > 0) {
+        // First visible word of this line – jump to start of previous line
+        currentLineIndex--;
+        currentWordInLine = 0;
+    }
+    updateLyricsDisplay();
+}
+
 // Handle next button/arrow key
 function handleNext() {
+    if (currentScreen === 'lines') { handleLyricsNext(); return; }
+
     const currentTime = Date.now();
     
     // Check if cooldown period has passed
@@ -627,6 +703,8 @@ function handlePracticeCompletion() {
 
 // Handle back button/arrow key
 function handleBack() {
+    if (currentScreen === 'lines') { handleLyricsBack(); return; }
+
     const currentTime = Date.now();
     
     // Check if cooldown period has passed
@@ -645,7 +723,7 @@ function handleBack() {
 
 // Handle keyboard input
 function handleKeyPress(event) {
-    if (currentScreen === 'practice' || currentScreen === 'race') {
+    if (currentScreen === 'practice' || currentScreen === 'race' || currentScreen === 'lines') {
         if (event.key === 'ArrowRight') {
             handleNext();
         } else if (event.key === 'ArrowLeft') {
@@ -692,7 +770,7 @@ function handleResize() {
     }
     
     // Add bounce animation to all screens
-    const screens = [titleScreen, modeSelectScreen, practiceScreen, raceScreen, endScreen, optionsScreen];
+    const screens = [titleScreen, modeSelectScreen, practiceScreen, raceScreen, lyricsScreen, endScreen, optionsScreen];
     screens.forEach(screen => {
         if (screen) {
             layoutManager.bounceResize(screen, () => {
@@ -711,8 +789,18 @@ function updateAllScreenLayouts() {
     if (modeSelectScreen) updateModeSelectLayout(modeSelectScreen);
     updatePracticeScreenLayout();
     updateRaceScreenLayout();
+    updateLyricsScreenLayoutWrapper();
     if (endScreen) updateEndScreenLayout(endScreen, app);
     if (optionsScreen) updateOptionsScreenLayout(optionsScreen);
+}
+
+function updateLyricsScreenLayoutWrapper() {
+    if (!lyricsScreen) return;
+    updateLyricsScreenLayout(lyricsScreen);
+    // Redraw the word display at the new scale if we're currently in lyrics mode
+    if (currentScreen === 'lines' && lyricsLines.length > 0) {
+        updateLyricsDisplay();
+    }
 }
 
 function updatePracticeScreenLayout() {
@@ -798,6 +886,7 @@ function updateScreenLayout(screen) {
     else if (screen === modeSelectScreen) updateModeSelectLayout(modeSelectScreen);
     else if (screen === practiceScreen) updatePracticeScreenLayout();
     else if (screen === raceScreen) updateRaceScreenLayout();
+    else if (screen === lyricsScreen) updateLyricsScreenLayoutWrapper();
     else if (screen === endScreen) updateEndScreenLayout(endScreen, app);
     else if (screen === optionsScreen) updateOptionsScreenLayout(optionsScreen);
 }

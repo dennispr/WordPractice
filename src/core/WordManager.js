@@ -11,6 +11,7 @@
 
 let _allPracticeWords = [];
 let _allHomeworkWords = [];
+let _allLyricsLines = [];
 
 /** Return the full practice word list (read-only reference). */
 export function getPracticeWords() {
@@ -20,6 +21,14 @@ export function getPracticeWords() {
 /** Return the full homework word list (read-only reference). */
 export function getHomeworkWords() {
     return _allHomeworkWords;
+}
+
+/**
+ * Return the lyrics lines array.
+ * Each entry is a string[] of whitespace-split tokens for that line.
+ */
+export function getLyricsLines() {
+    return _allLyricsLines;
 }
 
 /**
@@ -55,6 +64,26 @@ export async function loadHomeworkWords() {
     } catch (error) {
         console.error('Error loading homework words:', error);
         _allHomeworkWords = ['homework', 'words', 'missing'];
+    }
+}
+
+/**
+ * Load lyrics lines from lyrics.csv.
+ * Each non-empty line is split by whitespace into an array of tokens.
+ * Must be awaited during app init before starting any lyrics session.
+ */
+export async function loadLyricsLines() {
+    try {
+        const response = await fetch('lyrics.csv');
+        const text = await response.text();
+        _allLyricsLines = text.split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+            .map(line => line.split(/\s+/));
+        console.log(`Loaded ${_allLyricsLines.length} lyrics lines`);
+    } catch (error) {
+        console.error('Error loading lyrics:', error);
+        _allLyricsLines = [['Error', 'loading', 'lyrics']];
     }
 }
 

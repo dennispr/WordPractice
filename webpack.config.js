@@ -18,6 +18,7 @@ module.exports = {
       patterns: [
         { from: 'words.csv',      to: 'words.csv'      },
         { from: 'homework.csv',   to: 'homework.csv'   },
+        { from: 'lyrics.csv',     to: 'lyrics.csv'     },
         { from: 'src/Victory!.mp3', to: 'Victory!.mp3' },
       ],
     }),
