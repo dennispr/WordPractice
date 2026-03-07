@@ -10,7 +10,7 @@ import { createButton } from './ui/Button.js';
 import { GameDataManager } from './data/GameDataManager.js';
 import { createTitleScreen, updateTitleScreenLayout } from './screens/TitleScreen.js';
 import { createModeSelectScreen, updateModeSelectScreenLayout as updateModeSelectLayout } from './screens/ModeSelectScreen.js';
-import { createLyricsScreen, updateLyricsWordDisplay, updateLyricsScreenLayout } from './screens/LyricsScreen.js';
+import { createLyricsScreen, updateLyricsWordDisplay, updateLyricsScreenLayout, createLyricsEndScreen, updateLyricsEndScreenLayout, LYRICS_WINDOW_SIZE } from './screens/LyricsScreen.js';
 import { createEndScreen, updateEndScreenLayout } from './screens/EndScreen.js';
 import { createOptionsScreen, updateOptionsScreenLayout } from './screens/OptionsScreen.js';
 import {
@@ -47,6 +47,7 @@ let modeSelectScreen;
 let practiceScreen;
 let raceScreen;
 let lyricsScreen;
+let lyricsEndScreen;
 let endScreen;
 let optionsScreen;
 let highScoreInputScreen;
@@ -76,6 +77,7 @@ let sessionStartTime = null;
 let backButtonUses = 0;
 let celebrationSystem;
 let buttonParticles;
+let lyricsButtonParticles;
 
 // Game Data Manager for localStorage
 // Initialize game data manager
@@ -316,37 +318,10 @@ function createPracticeScreen() {
     
     // Create shared word display using layout manager
     wordText = FontManager.createWordDisplay(practiceScreen, app);
-    
-    // Get layout positions
-    const progressLayout = layoutManager.getProgressBar();
-    
-    // Progress bar background
-    progressBarBg = new PIXI.Graphics();
-    progressBarBg.beginFill(0xcccccc);
-    progressBarBg.drawRoundedRect(0, 0, progressLayout.width, progressLayout.height, 10);
-    progressBarBg.endFill();
-    progressBarBg.x = progressLayout.x;
-    progressBarBg.y = progressLayout.y;
-    practiceScreen.addChild(progressBarBg);
-    
-    // Progress bar fill
-    progressBarFill = new PIXI.Graphics();
-    progressBarFill.x = progressLayout.x;
-    progressBarFill.y = progressLayout.y;
-    practiceScreen.addChild(progressBarFill);
-    
-    // Progress text
-    progressText = new PIXI.Text('', {
-        fontFamily: 'Arial',
-        fontSize: layoutManager.scaleFontSize(36),  // Doubled from 18
-        fontWeight: 'bold',
-        fill: 0x666666,
-        align: 'center'
-    });
-    progressText.anchor.set(0.5);
-    progressText.x = layoutManager.centerX();
-    progressText.y = progressLayout.textY;
-    practiceScreen.addChild(progressText);
+
+    // Progress bar — built via shared FontManager factory
+    ({ bg: progressBarBg, fill: progressBarFill, text: progressText } =
+        FontManager.createProgressBar(practiceScreen));
     
     // Initialize celebration system
     celebrationSystem = new CelebrationSystem(app, practiceScreen);
@@ -383,12 +358,16 @@ function createPracticeScreen() {
 
 // Create Lyrics Screen
 function createLyricsScreenWrapper() {
-    lyricsScreen = createLyricsScreen(app, {
-        onNext: handleNext,
-        onBack: handleBack,
-    });
+    lyricsScreen = createLyricsScreen(createNavigationButtons);
     app.stage.addChild(lyricsScreen);
     screenManager.addScreen('lines', lyricsScreen);
+    lyricsButtonParticles = new ButtonParticles(app, lyricsScreen);
+
+    lyricsEndScreen = createLyricsEndScreen({
+        onContinue: () => showScreen('modeSelect'),
+    });
+    app.stage.addChild(lyricsEndScreen);
+    screenManager.addScreen('lyricsEnd', lyricsEndScreen);
 }
 
 // Create End Screen
@@ -524,19 +503,9 @@ function updateWord() {
 
 // Update progress bar display
 function updateProgressBar() {
-    const progressLayout = layoutManager.getProgressBar();
     const progress = (currentWordIndex + 1) / words.length;
-    const fillWidth = progressLayout.width * progress;
-    const percentage = Math.round(progress * 100);
-    
-    // Update fill bar using proper scaled dimensions
-    progressBarFill.clear();
-    progressBarFill.beginFill(0x4CAF50);
-    progressBarFill.drawRoundedRect(0, 0, fillWidth, progressLayout.height, 10);
-    progressBarFill.endFill();
-    
-    // Update text with percentage - show 100 words explicitly
-    progressText.text = `${percentage}% Complete (${currentWordIndex + 1}/100 words)`;
+    FontManager.drawProgressFill(progressBarFill, progress);
+    progressText.text = `${Math.round(progress * 100)}% Complete (${currentWordIndex + 1}/100 words)`;
 }
 
 // Create celebration effect for new best time
@@ -545,10 +514,15 @@ function updateProgressBar() {
 /** Recompute and redraw the lyrics word display from current state. */
 function updateLyricsDisplay() {
     const line        = lyricsLines[currentLineIndex];
-    const windowStart = Math.floor(currentWordInLine / 4) * 4;
+    const windowStart = Math.floor(currentWordInLine / LYRICS_WINDOW_SIZE) * LYRICS_WINDOW_SIZE;
+    // Compute word-level progress across all lines
+    const totalWords     = lyricsLines.reduce((sum, l) => sum + l.length, 0);
+    const wordsCompleted = lyricsLines
+        .slice(0, currentLineIndex)
+        .reduce((sum, l) => sum + l.length, 0) + currentWordInLine;
     updateLyricsWordDisplay(
         lyricsScreen, line, windowStart, currentWordInLine,
-        currentLineIndex, lyricsLines.length
+        currentLineIndex, lyricsLines.length, wordsCompleted, totalWords
     );
 }
 
@@ -557,6 +531,12 @@ function handleLyricsNext() {
     if (currentTime - lastNextTime < BUTTON_COOLDOWN) return;
     lastNextTime = currentTime;
 
+    // Fire particles at the Next button
+    if (lyricsButtonParticles) {
+        const buttonLayout = layoutManager.getNavigationButtons();
+        lyricsButtonParticles.celebrateNext(buttonLayout.next.x, buttonLayout.next.y);
+    }
+
     const line = lyricsLines[currentLineIndex];
     if (currentWordInLine < line.length - 1) {
         currentWordInLine++;
@@ -564,8 +544,8 @@ function handleLyricsNext() {
         currentLineIndex++;
         currentWordInLine = 0;
     } else {
-        // All lyrics exhausted – return to mode select
-        showScreen('modeSelect');
+        // All lyrics exhausted – show "The End" screen
+        showScreen('lyricsEnd');
         return;
     }
     updateLyricsDisplay();
@@ -576,7 +556,7 @@ function handleLyricsBack() {
     if (currentTime - lastBackTime < BUTTON_COOLDOWN) return;
     lastBackTime = currentTime;
 
-    const windowStart = Math.floor(currentWordInLine / 4) * 4;
+    const windowStart = Math.floor(currentWordInLine / LYRICS_WINDOW_SIZE) * LYRICS_WINDOW_SIZE;
     if (currentWordInLine > windowStart) {
         // Previous word is still visible on screen – step back one word
         currentWordInLine--;
@@ -770,7 +750,7 @@ function handleResize() {
     }
     
     // Add bounce animation to all screens
-    const screens = [titleScreen, modeSelectScreen, practiceScreen, raceScreen, lyricsScreen, endScreen, optionsScreen];
+    const screens = [titleScreen, modeSelectScreen, practiceScreen, raceScreen, lyricsScreen, lyricsEndScreen, endScreen, optionsScreen];
     screens.forEach(screen => {
         if (screen) {
             layoutManager.bounceResize(screen, () => {
@@ -790,6 +770,7 @@ function updateAllScreenLayouts() {
     updatePracticeScreenLayout();
     updateRaceScreenLayout();
     updateLyricsScreenLayoutWrapper();
+    if (lyricsEndScreen) updateLyricsEndScreenLayout(lyricsEndScreen);
     if (endScreen) updateEndScreenLayout(endScreen, app);
     if (optionsScreen) updateOptionsScreenLayout(optionsScreen);
 }
@@ -805,40 +786,22 @@ function updateLyricsScreenLayoutWrapper() {
 
 function updatePracticeScreenLayout() {
     if (!practiceScreen) return;
-    
-    const wordLayout = layoutManager.getWordDisplay();
-    const progressLayout = layoutManager.getProgressBar();
+
+    const wordLayout   = layoutManager.getWordDisplay();
     const buttonLayout = layoutManager.getNavigationButtons();
     
     // Update word display position
     if (wordText) {
         wordText.x = wordLayout.x;
         wordText.y = wordLayout.y;
-        // Update font size
         if (wordText.style) {
             wordText.style.fontSize = wordLayout.fontSize;
         }
     }
-    
-    // Update progress bar positions
-    if (progressBarBg) {
-        progressBarBg.x = progressLayout.x;
-        progressBarBg.y = progressLayout.y;
-        progressBarBg.clear();
-        progressBarBg.beginFill(0xcccccc);
-        progressBarBg.drawRoundedRect(0, 0, progressLayout.width, progressLayout.height, 10);
-        progressBarBg.endFill();
-    }
-    if (progressBarFill) {
-        progressBarFill.x = progressLayout.x;
-        progressBarFill.y = progressLayout.y;
-    }
-    if (progressText) {
-        progressText.x = layoutManager.centerX();
-        progressText.y = progressLayout.textY;
-        progressText.style.fontSize = layoutManager.scaleFontSize(36);
-    }
-    
+
+    // Reposition progress bar elements via shared helper
+    FontManager.repositionProgressBar(progressBarBg, progressBarFill, progressText);
+
     // Update navigation button positions
     if (backButton) {
         backButton.x = buttonLayout.back.x;
@@ -887,6 +850,7 @@ function updateScreenLayout(screen) {
     else if (screen === practiceScreen) updatePracticeScreenLayout();
     else if (screen === raceScreen) updateRaceScreenLayout();
     else if (screen === lyricsScreen) updateLyricsScreenLayoutWrapper();
+    else if (screen === lyricsEndScreen) updateLyricsEndScreenLayout(lyricsEndScreen);
     else if (screen === endScreen) updateEndScreenLayout(endScreen, app);
     else if (screen === optionsScreen) updateOptionsScreenLayout(optionsScreen);
 }

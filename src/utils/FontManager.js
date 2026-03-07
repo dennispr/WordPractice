@@ -208,4 +208,89 @@ export class FontManager {
 
         return textElement;
     }
+
+    /**
+     * Creates the three progress-bar PIXI objects (background, fill, label),
+     * adds them to `container`, and returns references to all three.
+     * This is the single source of truth for progress bar construction.
+     *
+     * @param {PIXI.Container} container - Parent container to add elements to
+     * @returns {{ bg: PIXI.Graphics, fill: PIXI.Graphics, text: PIXI.Text }}
+     */
+    static createProgressBar(container) {
+        const progressLayout = layoutManager.getProgressBar();
+
+        const bg = new PIXI.Graphics();
+        bg.beginFill(0xcccccc);
+        bg.drawRoundedRect(0, 0, progressLayout.width, progressLayout.height, 10);
+        bg.endFill();
+        bg.x = progressLayout.x;
+        bg.y = progressLayout.y;
+        container.addChild(bg);
+
+        const fill = new PIXI.Graphics();
+        fill.x = progressLayout.x;
+        fill.y = progressLayout.y;
+        container.addChild(fill);
+
+        const text = new PIXI.Text('', {
+            fontFamily: 'Arial',
+            fontSize: layoutManager.scaleFontSize(36),
+            fontWeight: 'bold',
+            fill: 0x666666,
+            align: 'center',
+        });
+        text.anchor.set(0.5);
+        text.x = layoutManager.centerX();
+        text.y = progressLayout.textY;
+        container.addChild(text);
+
+        return { bg, fill, text };
+    }
+
+    /**
+     * Redraws the green progress fill to reflect the given fraction (0–1).
+     * Clears previous drawing before redrawing.
+     *
+     * @param {PIXI.Graphics} fill     - The fill Graphics object
+     * @param {number}        fraction - Progress from 0.0 to 1.0
+     */
+    static drawProgressFill(fill, fraction) {
+        const progressLayout = layoutManager.getProgressBar();
+        const fillWidth = progressLayout.width * Math.min(Math.max(fraction, 0), 1);
+        fill.clear();
+        fill.beginFill(0x4CAF50);
+        fill.drawRoundedRect(0, 0, fillWidth, progressLayout.height, 10);
+        fill.endFill();
+    }
+
+    /**
+     * Repositions and redraws the progress bar elements after a window resize.
+     * Redraws the grey background; repositions fill and text (does NOT redraw
+     * the fill — call drawProgressFill separately to restore the green portion).
+     *
+     * @param {PIXI.Graphics} bg   - Progress bar background
+     * @param {PIXI.Graphics} fill - Progress bar fill
+     * @param {PIXI.Text}     text - Progress label
+     */
+    static repositionProgressBar(bg, fill, text) {
+        const progressLayout = layoutManager.getProgressBar();
+        if (bg) {
+            bg.x = progressLayout.x;
+            bg.y = progressLayout.y;
+            bg.clear();
+            bg.beginFill(0xcccccc);
+            bg.drawRoundedRect(0, 0, progressLayout.width, progressLayout.height, 10);
+            bg.endFill();
+        }
+        if (fill) {
+            fill.x = progressLayout.x;
+            fill.y = progressLayout.y;
+        }
+        if (text) {
+            text.x = layoutManager.centerX();
+            text.y = progressLayout.textY;
+            text.style.fontSize = layoutManager.scaleFontSize(36);
+        }
+    }
 }
