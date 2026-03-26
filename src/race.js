@@ -144,17 +144,17 @@ export function initRaceMode(words, gameData) {
     raceData.maxWordIndex = 0; // Reset max progress for new race
     
     if (scores.topTen.length > 0) {
-        // Calculate average time from top 10 scores for best time racer
+        // Calculate average time from top 10 scores, slowed by 1.5x to give player an advantage
         const totalTime = scores.topTen.reduce((sum, score) => sum + score.time, 0);
-        raceData.bestTime = Math.round(totalTime / scores.topTen.length);
+        raceData.bestTime = Math.round((totalTime / scores.topTen.length) * 1.5);
         
-        // Set recent racer to run at 60% of the slowest top 10 score (making it faster)
+        // Set recent racer to the slowest top 10 score, slowed by 1.5x to give player an advantage
         const slowestScore = scores.topTen[scores.topTen.length - 1].time;
-        raceData.recentTime = Math.round(slowestScore * 0.6);
+        raceData.recentTime = Math.round(slowestScore * 1.5);
     } else {
-        // Defaults optimized for 100-word sessions: 5 min best, 3.6 min recent (60% of 6 min)
-        raceData.bestTime = 300;  // 5 minutes for 100 words = 3 seconds per word
-        raceData.recentTime = 216;  // 3.6 minutes for 100 words = 2.16 seconds per word
+        // Defaults optimized for 100-word sessions, slowed by 1.5x
+        raceData.bestTime = 450;  // 7.5 minutes for 100 words
+        raceData.recentTime = 540;  // 9 minutes for 100 words
     }
     
     // Reset racer positions (with safety check)

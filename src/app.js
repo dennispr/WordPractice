@@ -415,6 +415,134 @@ function createOptionsScreenWrapper() {
                 );
             }, 100);
         },
+        onExportScores: () => {
+            const scores = gameData.getHighScores().topTen;
+            if (scores.length === 0) {
+                alert('No scores to export yet.');
+                return;
+            }
+            const header = 'Rank,Initials,Time (s),Words,Date\n';
+            const rows = scores.map((s, i) => {
+                const date = new Date(s.timestamp).toLocaleDateString();
+                return `${i + 1},${s.initials},${s.time},${s.wordsCount},${date}`;
+            }).join('\n');
+            const blob = new Blob([header + rows], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'wordpractice_top10.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        },
+        onShowGraph: () => {
+            const scores = gameData.getHighScores().topTen;
+            const sorted = [...scores].sort((a, b) => a.timestamp - b.timestamp);
+
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;';
+
+            const panel = document.createElement('div');
+            panel.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:620px;width:92%;box-sizing:border-box;';
+
+            const title = document.createElement('h2');
+            title.textContent = 'Score History — Time vs Date';
+            title.style.cssText = 'margin:0 0 16px;font-family:Arial;font-size:18px;text-align:center;color:#333;';
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 560;
+            canvas.height = 320;
+            canvas.style.cssText = 'width:100%;border:1px solid #e0e0e0;border-radius:4px;display:block;';
+
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.style.cssText = 'display:block;margin:16px auto 0;padding:8px 28px;font-size:15px;cursor:pointer;border:none;background:#0066CC;color:#fff;border-radius:6px;';
+            closeBtn.onclick = () => document.body.removeChild(overlay);
+
+            panel.appendChild(title);
+            panel.appendChild(canvas);
+            panel.appendChild(closeBtn);
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+
+            // Draw chart
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width, H = canvas.height;
+            const PAD = { top: 20, right: 20, bottom: 56, left: 64 };
+            const chartW = W - PAD.left - PAD.right;
+            const chartH = H - PAD.top - PAD.bottom;
+
+            ctx.fillStyle = '#fafafa';
+            ctx.fillRect(0, 0, W, H);
+
+            if (sorted.length < 2) {
+                ctx.fillStyle = '#666';
+                ctx.font = '15px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Need at least 2 scores to show a graph', W / 2, H / 2);
+                return;
+            }
+
+            const times = sorted.map(s => s.time);
+            const timestamps = sorted.map(s => s.timestamp);
+            const minTime = Math.min(...times), maxTime = Math.max(...times);
+            const minTs   = Math.min(...timestamps), maxTs = Math.max(...timestamps);
+            const timeRange = maxTime - minTime || 1;
+            const tsRange   = maxTs - minTs || 1;
+
+            // Horizontal grid lines + y-axis labels
+            ctx.strokeStyle = '#e8e8e8';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = PAD.top + (i / 4) * chartH;
+                ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + chartW, y); ctx.stroke();
+                const val = Math.round(maxTime - (i / 4) * timeRange);
+                ctx.fillStyle = '#888';
+                ctx.font = '11px Arial';
+                ctx.textAlign = 'right';
+                ctx.fillText(val + 's', PAD.left - 6, y + 4);
+            }
+
+            // Axes
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(PAD.left, PAD.top);
+            ctx.lineTo(PAD.left, PAD.top + chartH);
+            ctx.lineTo(PAD.left + chartW, PAD.top + chartH);
+            ctx.stroke();
+
+            // Axis titles
+            ctx.fillStyle = '#555';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.save();
+            ctx.translate(13, PAD.top + chartH / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Time (seconds)', 0, 0);
+            ctx.restore();
+
+            // Compute point coordinates
+            const pts = sorted.map(s => ({
+                x: PAD.left + ((s.timestamp - minTs) / tsRange) * chartW,
+                y: PAD.top  + ((maxTime - s.time)    / timeRange) * chartH,
+                s
+            }));
+
+            // Line
+            ctx.strokeStyle = '#0066CC';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+            ctx.stroke();
+
+            // Dots (labels left empty for future customization)
+            pts.forEach((p, i) => {
+                ctx.fillStyle = '#0066CC';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        },
         onBackToTitle: () => {
             showScreen('title');
         }
