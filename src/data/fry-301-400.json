@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "Fry Words 301–400",
+    "description": "The fourth hundred words from Edward Fry's high-frequency word list, ranked 301–400 by frequency. Approximately Grade 3–4 level.",
+    "gradeRange": "Grade 3–4",
+    "source": "Fry, E. (1980). The New Instant Word List. The Reading Teacher, 34(3), 284-289.",
+    "license": "Public Domain"
+  },
+  "words": [
+    "body", "music", "color", "stand", "sun", "questions", "fish", "area", "mark", "dog",
+    "horse", "birds", "problem", "complete", "room", "knew", "since", "ever", "piece", "told",
+    "usually", "didn't", "friends", "easy", "heard", "order", "red", "door", "sure", "become",
+    "top", "ship", "across", "today", "during", "short", "better", "best", "however", "low",
+    "hours", "black", "products", "happened", "whole", "measure", "remember", "early", "waves", "reached",
+    "listen", "wind", "rock", "space", "covered", "fast", "several", "hold", "himself", "toward",
+    "five", "step", "morning", "passed", "vowel", "true", "hundred", "against", "pattern", "numeral",
+    "table", "north", "slowly", "money", "map", "farm", "pulled", "draw", "voice", "seen",
+    "cold", "cried", "plan", "notice", "south", "sing", "war", "ground", "fall", "king",
+    "town", "I'll", "unit", "figure", "certain", "field", "travel", "wood", "fire", "upon"
+  ]
+}

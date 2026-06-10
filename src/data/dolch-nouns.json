@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "name": "Dolch Noun List",
+    "description": "The 95 high-frequency nouns compiled by Edward William Dolch as a companion to his 220 sight words list. Traditionally called the '95 Dolch nouns', the canonical list contains 97 entries. These are the most common concrete nouns found in children's books of the era.",
+    "source": "Dolch, E.W. (1948). Problems in Reading. Garrard Press, pp. 99-106.",
+    "license": "Public Domain",
+    "note": "The list is traditionally labelled '95 nouns' but contains 97 entries in the canonical source. 'Santa Claus' is counted as a single vocabulary item."
+  },
+  "words": [
+    "apple", "baby", "back", "ball", "bear", "bed", "bell", "bird", "birthday", "boat",
+    "box", "boy", "bread", "brother", "cake", "car", "cat", "chair", "chicken", "children",
+    "Christmas", "coat", "corn", "cow", "day", "dog", "doll", "door", "duck", "egg",
+    "eye", "farm", "farmer", "father", "feet", "fire", "fish", "floor", "flower", "game",
+    "garden", "girl", "goat", "grass", "ground", "hand", "head", "hill", "home", "horse",
+    "house", "kitty", "leg", "letter", "man", "men", "milk", "money", "morning", "mother",
+    "name", "nest", "night", "paper", "party", "picture", "pig", "rabbit", "rain", "ring",
+    "robin", "Santa Claus", "school", "seed", "sheep", "shoe", "sister", "snow", "song", "squirrel",
+    "stick", "street", "sun", "table", "thing", "time", "top", "toy", "tree", "watch",
+    "water", "way", "wind", "window", "woman", "women", "wood"
+  ]
+}

@@ -30,6 +30,7 @@ import { screenManager } from './core/ScreenManager.js';
 let app;
 let words = [];            // working word list for the current session
 let currentWordsSource = null; // reference to the pool used (practice or homework)
+let currentPlayMode = null;
 let currentWordIndex = 0;
 let currentScreen = 'title'; // 'title', 'modeSelect', 'practice', 'race', 'lines', 'end' …
 
@@ -78,6 +79,11 @@ let backButtonUses = 0;
 let celebrationSystem;
 let buttonParticles;
 let lyricsButtonParticles;
+let practiceWordStartTime = null;
+let practiceWordDurations = [];
+let practiceBacktrackTargetIndex = null;
+let practiceBacktrackedWords = [];
+let practiceTrackingSessionId = null;
 
 // Game Data Manager for localStorage
 // Initialize game data manager
@@ -149,6 +155,268 @@ function resetSaveData() {
     
     console.log('✅ Save data reset complete. New data structure:', newData);
     console.log('📊 All stats, best times, and session history have been cleared.');
+}
+
+function resetPracticeTracking() {
+    practiceWordStartTime = null;
+    practiceWordDurations = [];
+    practiceBacktrackTargetIndex = null;
+    practiceBacktrackedWords = [];
+    practiceTrackingSessionId = `practice_${Date.now()}`;
+}
+
+function startPracticeWordTiming() {
+    if (currentScreen !== 'practice') {
+        return;
+    }
+    practiceWordStartTime = Date.now();
+}
+
+function recordPracticeWordExit() {
+    if (currentScreen !== 'practice' || practiceWordStartTime === null) {
+        return 0;
+    }
+
+    const elapsedMs = Date.now() - practiceWordStartTime;
+    const wordIndex = currentWordIndex;
+    if (practiceWordDurations[wordIndex] === undefined) {
+        practiceWordDurations[wordIndex] = 0;
+    }
+    practiceWordDurations[wordIndex] += elapsedMs;
+    practiceWordStartTime = null;
+    return elapsedMs;
+}
+
+function notePracticeBacktrackTarget() {
+    if (currentScreen !== 'practice' || currentWordIndex <= 0) {
+        practiceBacktrackTargetIndex = null;
+        return;
+    }
+    practiceBacktrackTargetIndex = currentWordIndex;
+}
+
+function commitPracticeBacktrackIfNeeded() {
+    if (currentScreen !== 'practice' || practiceBacktrackTargetIndex === null) {
+        return;
+    }
+
+    if (practiceBacktrackTargetIndex === currentWordIndex) {
+        const word = words[practiceBacktrackTargetIndex];
+        if (word) {
+            practiceBacktrackedWords.push({
+                word,
+                reason: 'backtracked'
+            });
+        }
+        practiceBacktrackTargetIndex = null;
+    }
+}
+
+function finalizePracticeTrickyTracking() {
+    if (currentScreen !== 'practice') {
+        return null;
+    }
+
+    recordPracticeWordExit();
+    commitPracticeBacktrackIfNeeded();
+
+    let slowestWordIndex = -1;
+    let slowestWordDwellMs = -1;
+    practiceWordDurations.forEach((dwellMs, index) => {
+        if (typeof dwellMs === 'number' && dwellMs > slowestWordDwellMs) {
+            slowestWordDwellMs = dwellMs;
+            slowestWordIndex = index;
+        }
+    });
+
+    const slowestWord = slowestWordIndex >= 0 ? words[slowestWordIndex] : null;
+    return gameData.recordPracticeTrickyAnalytics({
+        sessionId: practiceTrackingSessionId,
+        sessionStartedAt: sessionStartTime,
+        sessionEndedAt: new Date().toISOString(),
+        slowestWord,
+        slowestWordDwellMs: slowestWordDwellMs > 0 ? slowestWordDwellMs : 0,
+        backtrackedWords: practiceBacktrackedWords.slice()
+    });
+}
+
+function getTrickyWordsOverlayHtml(report) {
+    const rows = report.words.map((record, index) => {
+        const expiresInPlays = record.points && record.points.length > 0
+            ? Math.max(0, Math.min(...record.points.map((point) => point.expiresAtPlay - report.playCount)))
+            : 0;
+        return `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${record.word}</td>
+                <td>${record.score}</td>
+                <td>${record.slowestEvents || 0}</td>
+                <td>${record.backtrackEvents || 0}</td>
+                <td>${((record.totalDwellMs || 0) / 1000).toFixed(1)}</td>
+                <td>${record.lastReason || ''}</td>
+                <td>${expiresInPlays}</td>
+            </tr>`;
+    }).join('');
+
+    return `
+        <div style="background:#fff;border-radius:12px;padding:24px;max-width:900px;width:94%;max-height:85vh;overflow:auto;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,0.35);">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+                <div>
+                    <h2 style="margin:0 0 8px;font-family:Arial;font-size:22px;color:#222;">Tricky Word Report</h2>
+                    <div style="font-family:Arial;font-size:14px;color:#666;line-height:1.5;">
+                        <div>Plays tracked: ${report.playCount}</div>
+                        <div>Active tricky words: ${report.activeWordCount}</div>
+                        <div>Active points: ${report.summary.totalActivePoints}</div>
+                        <div>Words with backtracks: ${report.summary.wordsWithBacktracks}</div>
+                        <div>Words with slowest-word hits: ${report.summary.wordsWithSlowestHits}</div>
+                    </div>
+                </div>
+                <button id="closeTrickyReportBtn" style="padding:8px 16px;border:none;border-radius:8px;background:#0066CC;color:#fff;cursor:pointer;font-size:14px;">Close</button>
+            </div>
+            <div style="margin-top:18px;overflow:auto;">
+                <table style="width:100%;border-collapse:collapse;font-family:Courier New, monospace;font-size:13px;">
+                    <thead>
+                        <tr style="text-align:left;border-bottom:2px solid #ddd;color:#444;">
+                            <th style="padding:8px 6px;">#</th>
+                            <th style="padding:8px 6px;">Word</th>
+                            <th style="padding:8px 6px;">Score</th>
+                            <th style="padding:8px 6px;">Slowest</th>
+                            <th style="padding:8px 6px;">Backtracked</th>
+                            <th style="padding:8px 6px;">Dwell s</th>
+                            <th style="padding:8px 6px;">Last Reason</th>
+                            <th style="padding:8px 6px;">Expires In Plays</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || '<tr><td colspan="8" style="padding:16px 6px;color:#666;">No active tricky words yet.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+}
+
+function showTrickyWordsReport() {
+    const report = gameData.getTrickyWordsReport();
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;box-sizing:border-box;';
+    overlay.innerHTML = getTrickyWordsOverlayHtml(report);
+
+    const closeOverlay = () => {
+        if (overlay.parentNode) {
+            overlay.parentNode.removeChild(overlay);
+        }
+    };
+
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+            closeOverlay();
+        }
+    });
+
+    document.body.appendChild(overlay);
+    const closeButton = overlay.querySelector('#closeTrickyReportBtn');
+    if (closeButton) {
+        closeButton.addEventListener('click', closeOverlay);
+    }
+}
+
+function downloadTextFile(filename, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+}
+
+function escapeCsvValue(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    const stringValue = String(value);
+    if (/[",\n]/.test(stringValue)) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+    }
+    return stringValue;
+}
+
+function exportRecords(format) {
+    const exportData = gameData.getExportData();
+    const stamp = new Date().toISOString().slice(0, 10);
+
+    if (format === 'json') {
+        downloadTextFile(
+            `wordpractice-records-${stamp}.json`,
+            JSON.stringify(exportData, null, 2),
+            'application/json'
+        );
+        return;
+    }
+
+    const lines = [];
+    lines.push('Section,Field,Value');
+    lines.push(`meta,exportedAt,${escapeCsvValue(exportData.exportedAt)}`);
+    lines.push(`meta,gameId,${escapeCsvValue(exportData.gameId)}`);
+    lines.push(`meta,gameName,${escapeCsvValue(exportData.gameName)}`);
+    lines.push(`meta,retentionDays,${escapeCsvValue(exportData.retentionDays)}`);
+    lines.push(`stats,bestTime,${escapeCsvValue(exportData.stats.bestTime)}`);
+    lines.push(`stats,averageTime,${escapeCsvValue(exportData.stats.averageTime)}`);
+    lines.push(`stats,totalCompletions,${escapeCsvValue(exportData.stats.totalCompletions)}`);
+    lines.push(`stats,totalWordsCompleted,${escapeCsvValue(exportData.stats.totalWordsCompleted)}`);
+
+    lines.push('');
+    lines.push('topTen,rank,initials,time,wordsCount,timePerWord,date,timestamp');
+    exportData.highScores.topTen.forEach((score, index) => {
+        const timePerWord = gameData.getTimePerWord(score).toFixed(3);
+        lines.push([
+            'topTen',
+            index + 1,
+            escapeCsvValue(score.initials),
+            escapeCsvValue(score.time),
+            escapeCsvValue(score.wordsCount),
+            escapeCsvValue(timePerWord),
+            escapeCsvValue(score.date),
+            escapeCsvValue(score.timestamp)
+        ].join(','));
+    });
+
+    lines.push('');
+    lines.push('historical,index,initials,time,wordsCount,timePerWord,date,timestamp,removedFromTopTen,removedReason');
+    exportData.highScores.historical.forEach((score, index) => {
+        const timePerWord = gameData.getTimePerWord(score).toFixed(3);
+        lines.push([
+            'historical',
+            index + 1,
+            escapeCsvValue(score.initials),
+            escapeCsvValue(score.time),
+            escapeCsvValue(score.wordsCount),
+            escapeCsvValue(timePerWord),
+            escapeCsvValue(score.date),
+            escapeCsvValue(score.timestamp),
+            escapeCsvValue(score.removedFromTopTen),
+            escapeCsvValue(score.removedReason)
+        ].join(','));
+    });
+
+    lines.push('');
+    lines.push('sessions,index,sessionId,startTime,endTime,duration,completed,wordsCount,shuffled,backButtonUses');
+    exportData.sessions.forEach((session, index) => {
+        lines.push([
+            'sessions',
+            index + 1,
+            escapeCsvValue(session.sessionId),
+            escapeCsvValue(session.startTime),
+            escapeCsvValue(session.endTime),
+            escapeCsvValue(session.duration),
+            escapeCsvValue(session.completed),
+            escapeCsvValue(session.wordsCount),
+            escapeCsvValue(session.shuffled),
+            escapeCsvValue(session.backButtonUses)
+        ].join(','));
+    });
+
+    downloadTextFile(`wordpractice-records-${stamp}.csv`, `${lines.join('\n')}\n`, 'text/csv;charset=utf-8');
 }
 
 // Create rainbow gradient background
@@ -269,6 +537,7 @@ function createTitleScreenWrapper() {
 function createModeSelectScreenWrapper() {
     modeSelectScreen = createModeSelectScreen(app, {
         onHomework: () => {
+            currentPlayMode = 'homework';
             currentWordsSource = getHomeworkWords();
             words = prepareWords(currentWordsSource);
             currentWordIndex = 0;
@@ -276,8 +545,11 @@ function createModeSelectScreenWrapper() {
             backButtonUses = 0;
             showScreen('practice');
             updateWord();
+            resetPracticeTracking();
+            startPracticeWordTiming();
         },
         onPractice: () => {
+            currentPlayMode = 'practice';
             currentWordsSource = getPracticeWords();
             words = prepareWords(currentWordsSource);
             currentWordIndex = 0;
@@ -285,8 +557,11 @@ function createModeSelectScreenWrapper() {
             backButtonUses = 0;
             showScreen('practice');
             updateWord();
+            resetPracticeTracking();
+            startPracticeWordTiming();
         },
         onRace: () => {
+            currentPlayMode = 'race';
             currentWordsSource = getPracticeWords();
             words = prepareWords(currentWordsSource);
             currentWordIndex = 0;
@@ -378,12 +653,15 @@ function createEndScreenWrapper() {
             showScreen('title');
         },
         onShuffleRestart: () => {
+            currentPlayMode = currentPlayMode || 'practice';
             words = prepareWords(currentWordsSource || getPracticeWords());
             currentWordIndex = 0;
             sessionStartTime = new Date().toISOString();
             backButtonUses = 0;
             showScreen('practice');
             updateWord();
+            resetPracticeTracking();
+            startPracticeWordTiming();
         }
     });
     app.stage.addChild(endScreen);
@@ -415,24 +693,14 @@ function createOptionsScreenWrapper() {
                 );
             }, 100);
         },
-        onExportScores: () => {
-            const scores = gameData.getHighScores().topTen;
-            if (scores.length === 0) {
-                alert('No scores to export yet.');
-                return;
-            }
-            const header = 'Rank,Initials,Time (s),Words,Date\n';
-            const rows = scores.map((s, i) => {
-                const date = new Date(s.timestamp).toLocaleDateString();
-                return `${i + 1},${s.initials},${s.time},${s.wordsCount},${date}`;
-            }).join('\n');
-            const blob = new Blob([header + rows], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'wordpractice_top10.csv';
-            a.click();
-            URL.revokeObjectURL(url);
+        onExportCsv: () => {
+            exportRecords('csv');
+        },
+        onExportJson: () => {
+            exportRecords('json');
+        },
+        onShowTrickyReport: () => {
+            showTrickyWordsReport();
         },
         onShowGraph: () => {
             const scores = gameData.getHighScores().topTen;
@@ -617,6 +885,10 @@ function showScreen(screen) {
 function updateWord() {
     // Update the word display using FontManager
     FontManager.updateWordDisplay(wordText, words[currentWordIndex], currentWordIndex, words.length);
+
+    if (currentScreen === 'practice' && currentPlayMode === 'practice' && practiceWordStartTime === null) {
+        startPracticeWordTiming();
+    }
     
     // Update progress bar only in practice mode
     if (currentScreen === 'practice') {
@@ -708,6 +980,11 @@ function handleNext() {
     }
     
     lastNextTime = currentTime;
+
+    if (currentScreen === 'practice' && currentPlayMode === 'practice') {
+        recordPracticeWordExit();
+        commitPracticeBacktrackIfNeeded();
+    }
     
     if (currentWordIndex < words.length - 1) {
         // Create celebration particles at Next button position
@@ -760,6 +1037,8 @@ function handlePracticeCompletion() {
     const currentStats = gameData.getStats();
     const isFirstCompletion = currentStats.bestTime === null;
     const isNewBest = isFirstCompletion || duration < currentStats.bestTime;
+
+    const trickyReport = currentPlayMode === 'practice' ? finalizePracticeTrickyTracking() : null;
     
     if (isFirstCompletion) {
         console.log('🎉 First completion ever! Time:', duration, 'seconds');
@@ -773,8 +1052,13 @@ function handlePracticeCompletion() {
         completed: true,
         wordsCount: words.length,
         shuffled: true, // We don't track if it was shuffled, assume true
-        backButtonUses: backButtonUses
+        backButtonUses: backButtonUses,
+        mode: currentPlayMode || currentScreen
     });
+
+    if (trickyReport) {
+        console.log('🧠 Tricky word report updated:', trickyReport);
+    }
     
     // Check if it's a high score
     if (gameData.isTopTenScore(duration, words.length)) {
@@ -821,10 +1105,17 @@ function handleBack() {
     }
     
     lastBackTime = currentTime;
+
+    if (currentScreen === 'practice' && currentPlayMode === 'practice') {
+        recordPracticeWordExit();
+    }
     
     if (currentWordIndex > 0) {
         currentWordIndex--;
         backButtonUses++;
+        if (currentScreen === 'practice' && currentPlayMode === 'practice') {
+            practiceBacktrackTargetIndex = currentWordIndex;
+        }
         updateWord();
     }
 }

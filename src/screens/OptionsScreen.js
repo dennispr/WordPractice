@@ -16,7 +16,9 @@ import { layoutManager } from '../utils/LayoutManager.js';
  * @param {Object}   callbacks
  * @param {Function} callbacks.onReset            - Reset all saved progress
  * @param {Function} callbacks.onTestCelebration  - Trigger a test celebration
- * @param {Function} callbacks.onExportScores     - Export top 10 as CSV
+ * @param {Function} callbacks.onExportCsv        - Export saved records as CSV
+ * @param {Function} callbacks.onExportJson       - Export saved records as JSON
+ * @param {Function} callbacks.onShowTrickyReport - Show tricky word analytics report
  * @param {Function} callbacks.onShowGraph        - Show time vs date graph
  * @param {Function} callbacks.onBackToTitle      - Return to title screen
  * @returns {PIXI.Container}
@@ -25,9 +27,11 @@ import { layoutManager } from '../utils/LayoutManager.js';
  *   [0] title
  *   [1] resetButton        (left col,  row 1)
  *   [2] testCelebButton    (left col,  row 2)
- *   [3] exportButton       (right col, row 1)
- *   [4] graphButton        (right col, row 2)
- *   [5] backButton         (center,    bottom)
+ *   [3] exportCsvButton    (right col, row 1)
+ *   [4] exportJsonButton   (right col, row 2)
+ *   [5] graphButton        (left col,  row 3)
+ *   [6] trickyButton       (right col, row 3)
+ *   [7] backButton         (center,    bottom)
  */
 export function createOptionsScreen(app, callbacks) {
     const screen = new PIXI.Container();
@@ -37,7 +41,8 @@ export function createOptionsScreen(app, callbacks) {
     const colOffset = gameArea.width * 0.26;
     const row1Y = gameArea.y + gameArea.height * 0.40;
     const row2Y = gameArea.y + gameArea.height * 0.60;
-    const backY  = gameArea.y + gameArea.height * 0.82;
+    const row3Y = gameArea.y + gameArea.height * 0.72;
+    const backY  = gameArea.y + gameArea.height * 0.86;
 
     // Title  [0]
     const optionsTitle = new PIXI.Text('Options', {
@@ -68,21 +73,35 @@ export function createOptionsScreen(app, callbacks) {
     });
     screen.addChild(testCelebrationButton);
 
-    // Export Scores  [3] — right col, row 1
-    const exportButton = createButton('Export Top 10 (CSV)', centerX + colOffset, row1Y);
-    exportButton.on('pointerdown', () => {
-        if (callbacks.onExportScores) callbacks.onExportScores();
+    // Export CSV  [3] — right col, row 1
+    const exportCsvButton = createButton('Export Records (CSV)', centerX + colOffset, row1Y);
+    exportCsvButton.on('pointerdown', () => {
+        if (callbacks.onExportCsv) callbacks.onExportCsv();
     });
-    screen.addChild(exportButton);
+    screen.addChild(exportCsvButton);
 
-    // Score Graph  [4] — right col, row 2
-    const graphButton = createButton('Score Graph', centerX + colOffset, row2Y);
+    // Export JSON  [4] — right col, row 2
+    const exportJsonButton = createButton('Export Records (JSON)', centerX + colOffset, row2Y);
+    exportJsonButton.on('pointerdown', () => {
+        if (callbacks.onExportJson) callbacks.onExportJson();
+    });
+    screen.addChild(exportJsonButton);
+
+    // Score Graph  [5] — left col, row 3
+    const graphButton = createButton('Score Graph', centerX - colOffset, row3Y);
     graphButton.on('pointerdown', () => {
         if (callbacks.onShowGraph) callbacks.onShowGraph();
     });
     screen.addChild(graphButton);
 
-    // Back to Title  [5] — center, bottom
+    // Tricky Word Report  [6] — right col, row 3
+    const trickyReportButton = createButton('Tricky Word Report', centerX + colOffset, row3Y);
+    trickyReportButton.on('pointerdown', () => {
+        if (callbacks.onShowTrickyReport) callbacks.onShowTrickyReport();
+    });
+    screen.addChild(trickyReportButton);
+
+    // Back to Title  [7] — center, bottom
     const backToTitleButton = createButton('Back to Title', centerX, backY);
     backToTitleButton.on('pointerdown', () => {
         if (callbacks.onBackToTitle) callbacks.onBackToTitle();
@@ -94,7 +113,7 @@ export function createOptionsScreen(app, callbacks) {
 
 /**
  * Reposition all Options screen children after a window resize.
- * Children: [0] title, [1] reset, [2] testCelebration, [3] exportScores, [4] scoreGraph, [5] back
+ * Children: [0] title, [1] reset, [2] testCelebration, [3] exportCsv, [4] exportJson, [5] scoreGraph, [6] trickyReport, [7] back
  * @param {PIXI.Container} screen
  */
 export function updateOptionsScreenLayout(screen) {
@@ -105,7 +124,8 @@ export function updateOptionsScreenLayout(screen) {
     const colOffset = gameArea.width * 0.26;
     const row1Y = gameArea.y + gameArea.height * 0.40;
     const row2Y = gameArea.y + gameArea.height * 0.60;
-    const backY  = gameArea.y + gameArea.height * 0.82;
+    const row3Y = gameArea.y + gameArea.height * 0.72;
+    const backY  = gameArea.y + gameArea.height * 0.86;
 
     if (screen.children[0]) {
         screen.children[0].x = centerX;
@@ -129,7 +149,15 @@ export function updateOptionsScreenLayout(screen) {
         screen.children[4].y = row2Y;
     }
     if (screen.children[5]) {
-        screen.children[5].x = centerX;
-        screen.children[5].y = backY;
+        screen.children[5].x = centerX - colOffset;
+        screen.children[5].y = row3Y;
+    }
+    if (screen.children[6]) {
+        screen.children[6].x = centerX + colOffset;
+        screen.children[6].y = row3Y;
+    }
+    if (screen.children[7]) {
+        screen.children[7].x = centerX;
+        screen.children[7].y = backY;
     }
 }
